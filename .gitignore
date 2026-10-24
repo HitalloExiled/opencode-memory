@@ -1,0 +1,11 @@
+node_modules/
+
+# A memoria e estado local da maquina, nunca conteudo de repo.
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.export.json
+
+# Scratch dos testes (roda no cwd).
+.memory-test-tmp/
