@@ -70,8 +70,11 @@ async function currentProject(ctx: PluginContext, sessionID: string) {
 export async function registerTools(ctx: PluginContext, runtime: Runtime) {
   return ctx.tool.transform((editor) => {
     // Namespaced tools (memory.search / memory.summaries / memory.history),
-    // matching the built-in browser.* pattern: one namespace in the catalog,
-    // no collision with other tool families (notes_*, sandbox_*).
+    // matching the built-in browser.* pattern: one "memory" group in the
+    // catalog, no collision with other tool families (notes_*, sandbox_*).
+    // editor.namespace() only labels the group (its description shows in the
+    // catalog); the per-tool options.namespace is what actually prefixes the
+    // qualified name (tools.memory.*) in Code Mode.
     editor.namespace({
       name: "memory",
       description:
@@ -294,6 +297,7 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
             `\n\nRead more with memory.summaries (summaries) or memory.history (full messages).${partialNote}${vectorNote}`,
         };
       },
+      options: { namespace: "memory" },
     });
 
     editor.add({
@@ -368,6 +372,7 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
           content: `${header}\n\n${formatSummaryList(records)}\n\nRead one with action="read" and its id.`,
         };
       },
+      options: { namespace: "memory" },
     });
 
     editor.add({
@@ -530,6 +535,7 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
 
         return { content: `Unknown action "${action}". Use sessions, read, search or message.` };
       },
+      options: { namespace: "memory" },
     });
   });
 }
