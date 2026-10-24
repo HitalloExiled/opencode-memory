@@ -369,7 +369,8 @@ export function formatMessage(message: MessageLike, options: ExtractOptions = {}
         blocks.push(formatToolPart(part));
       }
     }
-    const meta = message.model ? `\nmodel: ${modelLabel(message.model)}` : "";
+    const agent = typeof message.agent === "string" && message.agent ? `\nagent: ${message.agent}` : "";
+    const meta = agent + (message.model ? `\nmodel: ${modelLabel(message.model)}` : "");
     return `${header}${meta}\n\n${blocks.join("\n\n")}`.trim();
   }
   if (message.type === "compaction") {

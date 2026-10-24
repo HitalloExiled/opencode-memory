@@ -139,6 +139,63 @@ describe("indexAllProjects", () => {
     await index.close();
   });
 
+  test("assistant docs carry attribution; user docs do not", async () => {
+    const index = await openIndex();
+    const sessions: SessionInfoLike[] = [
+      { id: "ses_at", projectID: "pAT", title: "Attribution", location: { directory: "/a" }, time: { created: 1000, updated: 9000 } },
+    ];
+    const messages: Record<string, MessageLike[]> = {
+      ses_at: [
+        { type: "user", id: "msg_at_user", text: "user question about attribution", time: { created: 1000 } },
+        {
+          type: "assistant",
+          id: "msg_at_ai",
+          agent: "build",
+          model: { providerID: "llama.cpp", id: "test-model" },
+          content: [{ type: "text", text: "assistant answer about attribution" }],
+          time: { created: 2000 },
+        },
+      ],
+    };
+    const runtime = createRuntime(fakeCtx(sessions, messages), index);
+    await indexAllProjects(runtime, { currentProjectID: "pAT" });
+
+    const docs = await index.docs("pAT");
+    const ai = docs.find((doc) => doc.messageID === "msg_at_ai");
+    expect(ai?.agent).toBe("build");
+    expect(ai?.model).toBe("llama.cpp/test-model");
+    const user = docs.find((doc) => doc.messageID === "msg_at_user");
+    expect(user?.agent).toBeUndefined();
+    expect(user?.model).toBeUndefined();
+    await index.close();
+  });
+
+  test("summary docs carry the generating model from the frontmatter", async () => {
+    const index = await openIndex();
+    const path = summaryPath("pAS", 1760000099000, "msg_as_sum");
+    await mkdir(dirname(path), { recursive: true });
+    const frontmatter = formatFrontmatter({
+      id: "msg_as_sum",
+      messageID: "msg_as_sum",
+      sessionID: "ses_as",
+      projectID: "pAS",
+      created: 1760000099000,
+      createdISO: new Date(1760000099000).toISOString(),
+      title: "Attributed summary",
+      model: "llama.cpp/summary-model",
+    });
+    await writeFile(path, `${frontmatter}\n\nattributed summary body\n`);
+
+    const runtime = createRuntime(fakeCtx([], {}), index);
+    await indexSummaryFiles(runtime, "pAS");
+
+    const doc = (await index.docs("pAS")).find((d) => d.messageID === "msg_as_sum");
+    expect(doc?.kind).toBe("summary");
+    expect(doc?.model).toBe("llama.cpp/summary-model");
+    expect(doc?.agent).toBeUndefined();
+    await index.close();
+  });
+
   test("rebuild clears the index before reindexing", async () => {
     const index = await openIndex();
     const sessions: SessionInfoLike[] = [

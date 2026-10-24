@@ -34,6 +34,8 @@ export interface MessageLike {
   summary?: string;
   status?: string;
   reason?: string;
+  /** Agent active for the turn (assistant messages only, on the wire). */
+  agent?: string;
   model?: { providerID?: string; id?: string; variant?: string };
   content?: ContentPart[];
   files?: Array<{ name?: string; description?: string }>;
@@ -63,6 +65,9 @@ export interface IndexDoc {
   kind: MessageKind;
   created: number;
   title?: string;
+  /** Attribution: who produced the content (assistant agent / summary model). */
+  agent?: string;
+  model?: string;
   text: string;
 }
 

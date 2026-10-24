@@ -266,8 +266,15 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
 
         const lines = hits.map((hit) => {
           const session = hit.sessionID === context.sessionID ? "this session" : `\`${hit.sessionID}\``;
+          // Attribution: who produced the content (agent + model for
+          // assistant/summary; user text is the human, implicit in kind).
+          const by =
+            hit.kind === "user"
+              ? "user"
+              : [hit.agent, hit.model ? `(${hit.model})` : ""].filter(Boolean).join(" ");
           return (
-            `- **${fmtDate(hit.created)}** · ${hit.kind} · via: ${hit.via ?? "fts"} · ${session}` +
+            `- **${fmtDate(hit.created)}** · ${hit.kind}` +
+            `${by ? ` · by: ${by}` : ""} · via: ${hit.via ?? "fts"} · ${session}` +
             `${hit.title ? ` — ${hit.title}` : ""}` +
             `${hit.kind === "summary" && hit.messageID ? ` · summary \`${hit.messageID}\`` : ""}` +
             `\n  ${normalizeWhitespace(hit.snippet)}`

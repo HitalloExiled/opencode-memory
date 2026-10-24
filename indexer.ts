@@ -9,7 +9,7 @@ import { captureCompaction, listAllSummaries, listSummaries, migrateSessionSumma
 import { extractNarrative, listAllMessages, listSessions, messageCreated } from "./history.js";
 import { listProjects, resolveProjectID } from "./projects.js";
 import type { IndexDoc, MessageLike, SessionInfoLike } from "./types.js";
-import { timeMs } from "./util.js";
+import { modelLabel, timeMs } from "./util.js";
 
 export interface BackfillResult {
   sessions: number;
@@ -57,6 +57,8 @@ function sessionUpdated(session: SessionInfoLike): number {
 function narrativeDoc(message: MessageLike, session: SessionInfoLike, projectID: string): IndexDoc | undefined {
   const narrative = extractNarrative(message);
   if (!narrative) return undefined;
+  // Attribution: assistant messages carry the active agent and the model on
+  // the wire; user messages do not (kind=user already identifies the author).
   return {
     id: message.id,
     projectID,
@@ -65,6 +67,8 @@ function narrativeDoc(message: MessageLike, session: SessionInfoLike, projectID:
     kind: narrative.kind,
     created: messageCreated(message) || Date.now(),
     title: session.title,
+    agent: typeof message.agent === "string" && message.agent ? message.agent : undefined,
+    model: message.model ? modelLabel(message.model) : undefined,
     text: narrative.text,
   };
 }

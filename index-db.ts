@@ -87,6 +87,8 @@ class SqliteIndex implements MemoryIndex {
         kind TEXT NOT NULL,
         created INTEGER NOT NULL,
         title TEXT,
+        agent TEXT,
+        model TEXT,
         text TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS documents_project ON documents(project_id, created DESC);
@@ -110,6 +112,12 @@ class SqliteIndex implements MemoryIndex {
       );
       CREATE INDEX IF NOT EXISTS embeddings_model ON embeddings(model, project_id);
     `);
+    // Attribution columns were added after the initial schema: existing
+    // databases need an additive migration (new databases get them above).
+    for (const col of ["agent", "model"]) {
+      const cols = this.db.query("PRAGMA table_info(documents)").all() as Array<{ name: string }>;
+      if (!cols.some((c) => c.name === col)) this.db.exec(`ALTER TABLE documents ADD COLUMN ${col} TEXT`);
+    }
     this.fts = true;
     try {
       this.db.exec("CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(text, tokenize='unicode61 remove_diacritics 2')");
@@ -127,10 +135,10 @@ class SqliteIndex implements MemoryIndex {
     const max = indexTextMax();
     const get = this.db.query("SELECT rowid FROM documents WHERE id = ?");
     const insert = this.db.query(
-      "INSERT INTO documents (id, project_id, session_id, message_id, kind, created, title, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO documents (id, project_id, session_id, message_id, kind, created, title, agent, model, text) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     );
     const update = this.db.query(
-      "UPDATE documents SET project_id = ?, session_id = ?, message_id = ?, kind = ?, created = ?, title = ?, text = ? WHERE rowid = ?",
+      "UPDATE documents SET project_id = ?, session_id = ?, message_id = ?, kind = ?, created = ?, title = ?, agent = ?, model = ?, text = ? WHERE rowid = ?",
     );
     const lastRow = this.db.query("SELECT last_insert_rowid() AS id");
     const ftsInsert = this.db.query("INSERT INTO documents_fts(rowid, text) VALUES (?, ?)");
@@ -145,13 +153,35 @@ class SqliteIndex implements MemoryIndex {
         let rowid: number;
         if (existing) {
           rowid = Number(existing.rowid);
-          update.run(doc.projectID, doc.sessionID, doc.messageID ?? null, doc.kind, doc.created, title, text, rowid);
+          update.run(
+            doc.projectID,
+            doc.sessionID,
+            doc.messageID ?? null,
+            doc.kind,
+            doc.created,
+            title,
+            doc.agent ?? null,
+            doc.model ?? null,
+            text,
+            rowid,
+          );
           if (this.fts) {
             ftsDelete.run(rowid);
             ftsInsert.run(rowid, text);
           }
         } else {
-          insert.run(doc.id, doc.projectID, doc.sessionID, doc.messageID ?? null, doc.kind, doc.created, title, text);
+          insert.run(
+            doc.id,
+            doc.projectID,
+            doc.sessionID,
+            doc.messageID ?? null,
+            doc.kind,
+            doc.created,
+            title,
+            doc.agent ?? null,
+            doc.model ?? null,
+            text,
+          );
           rowid = Number((lastRow.get() as { id: number }).id);
           if (this.fts) ftsInsert.run(rowid, text);
         }
@@ -178,7 +208,7 @@ class SqliteIndex implements MemoryIndex {
       params.push(options.kind);
     }
     const sql =
-      "SELECT id, project_id, session_id, message_id, kind, created, title, text FROM documents" +
+      "SELECT id, project_id, session_id, message_id, kind, created, title, agent, model, text FROM documents" +
       (clauses.length ? ` WHERE ${clauses.join(" AND ")}` : "") +
       " ORDER BY created DESC LIMIT ?";
     params.push(Math.max(1, options.limit));
@@ -206,7 +236,7 @@ class SqliteIndex implements MemoryIndex {
     try {
       const rows = this.db
         .query(
-          `SELECT d.id, d.project_id, d.session_id, d.message_id, d.kind, d.created, d.title, d.text,
+          `SELECT d.id, d.project_id, d.session_id, d.message_id, d.kind, d.created, d.title, d.agent, d.model, d.text,
                   bm25(documents_fts) AS rank
            FROM documents_fts f JOIN documents d ON d.rowid = f.rowid
            WHERE ${clauses.join(" AND ")}
@@ -387,10 +417,10 @@ class SqliteIndex implements MemoryIndex {
   async docs(projectID?: string): Promise<IndexDoc[]> {
     const rows = projectID
       ? (this.db
-          .query("SELECT id, project_id, session_id, message_id, kind, created, title, text FROM documents WHERE project_id = ?")
+          .query("SELECT id, project_id, session_id, message_id, kind, created, title, agent, model, text FROM documents WHERE project_id = ?")
           .all(projectID) as any[])
       : (this.db
-          .query("SELECT id, project_id, session_id, message_id, kind, created, title, text FROM documents")
+          .query("SELECT id, project_id, session_id, message_id, kind, created, title, agent, model, text FROM documents")
           .all() as any[]);
     return rows.map(fromRow);
   }
@@ -400,7 +430,7 @@ class SqliteIndex implements MemoryIndex {
     const placeholders = ids.map(() => "?").join(", ");
     const rows = this.db
       .query(
-        `SELECT id, project_id, session_id, message_id, kind, created, title, text FROM documents WHERE id IN (${placeholders})`,
+        `SELECT id, project_id, session_id, message_id, kind, created, title, agent, model, text FROM documents WHERE id IN (${placeholders})`,
       )
       .all(...ids) as any[];
     return rows.map(fromRow);
@@ -610,6 +640,8 @@ function fromRow(row: any): IndexDoc {
     kind: String(row.kind) as MessageKind,
     created: Number(row.created),
     title: row.title ? String(row.title) : undefined,
+    agent: row.agent ? String(row.agent) : undefined,
+    model: row.model ? String(row.model) : undefined,
     text: String(row.text),
   };
 }

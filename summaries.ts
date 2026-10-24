@@ -35,6 +35,8 @@ export function toIndexDoc(record: SummaryRecord): IndexDoc {
     kind: "summary",
     created: record.created,
     title: record.title,
+    // Compaction summaries carry the generating model (no agent on the wire).
+    model: record.model,
     text: record.body,
   };
 }
