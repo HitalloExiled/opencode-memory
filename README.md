@@ -41,10 +41,10 @@ O plugin é carregado como pacote local em `~/.config/opencode/plugins/memory`.
    `<memory-context>` com: repositório, branch e último commit (o status do
    working tree fica **fora** do bloco, para não invalidar o cache de prefixo
    do servidor a cada edição — peça o estado atual sob demanda pela ferramenta
-   `memory_summaries` com `action=repo`) e o handoff da sessão anterior do
+   `memory.summaries` com `action=repo`) e o handoff da sessão anterior do
    mesmo projeto — apenas as seções Objective/Next Move, marcadas como
    *dados não confiáveis* (o corpo completo do resumo nunca entra no system
-   prompt; use `memory_summaries` para ler). Isso nunca é persistido — é
+   prompt; use `memory.summaries` para ler). Isso nunca é persistido — é
    recalculado a cada injeção.
 3. **Permite busca cross-sessão.** Um índice derivado (SQLite FTS5, com
    fallback `LIKE` e, por último, JSON) guarda apenas texto de usuário, texto
@@ -81,7 +81,7 @@ no repo nem escrito dentro dele.
 
 ## Busca semântica local (híbrida com o FTS5)
 
-A consulta de `memory_search` roda dois rankings em paralelo e funde-os por
+A consulta de `memory.search` roda dois rankings em paralelo e funde-os por
 Reciprocal Rank Fusion (RRF, k=60). Cada resultado carrega a tag `via:`
 indicando a camada que o achou: `fts` (só palavras-chave), `vec`
 (só semântica) ou `fts+vec` (as duas).
@@ -110,9 +110,9 @@ indicando a camada que o achou: `fts` (só palavras-chave), `vec`
 
 | Tool | Para quê |
 |---|---|
-| `memory_summaries` | listar/buscar/ler resumos de compactação (`detail=brief\|full\|sections`) + estado do repo (`action=repo`) |
-| `memory_search` | busca híbrida (FTS5 + semântica local, fundida por RRF; cada hit tagueado `via: fts\|vec\|fts+vec` **e com atribuição** `by: <agente> (<modelo>)` / `by: user`) no índice derivado (resumos + texto de usuário/assistente); `scope=project\|all`; `action=index-all` indexa todos os projetos manualmente (`rebuild=true` para rebuild completo); `action=embed` (re)constrói os vetores do escopo |
-| `memory_history` | inspecionar a timeline completa de uma sessão (listar sessões, ler página, buscar, buscar uma mensagem; mensagens de assistente mostram `agent:` e `model:`); tool calls e reasoning só entram com `includeTools`/`includeReasoning` explícitos; sessões de outro projeto exigem `scope=all` |
+| `memory.summaries` | listar/buscar/ler resumos de compactação (`detail=brief\|full\|sections`) + estado do repo (`action=repo`) |
+| `memory.search` | busca híbrida (FTS5 + semântica local, fundida por RRF; cada hit tagueado `via: fts\|vec\|fts+vec` **e com atribuição** `by: <agente> (<modelo>)` / `by: user`) no índice derivado (resumos + texto de usuário/assistente); `scope=project\|all`; `action=index-all` indexa todos os projetos manualmente (`rebuild=true` para rebuild completo); `action=embed` (re)constrói os vetores do escopo |
+| `memory.history` | inspecionar a timeline completa de uma sessão (listar sessões, ler página, buscar, buscar uma mensagem; mensagens de assistente mostram `agent:` e `model:`); tool calls e reasoning só entram com `includeTools`/`includeReasoning` explícitos; sessões de outro projeto exigem `scope=all` |
 
 ## Comandos
 

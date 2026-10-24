@@ -69,8 +69,16 @@ async function currentProject(ctx: PluginContext, sessionID: string) {
 
 export async function registerTools(ctx: PluginContext, runtime: Runtime) {
   return ctx.tool.transform((editor) => {
+    // Namespaced tools (memory.search / memory.summaries / memory.history),
+    // matching the built-in browser.* pattern: one namespace in the catalog,
+    // no collision with other tool families (notes_*, sandbox_*).
+    editor.namespace({
+      name: "memory",
+      description:
+        "Local memory for this machine: hybrid search over past conversations and compaction summaries, summary inspection, and full session timelines. Read-only.",
+    });
     editor.add({
-      name: "memory_search",
+      name: "search",
       description: [
         "Search past conversations and compaction summaries across sessions of this project.",
         "The index holds only user text, assistant text and compaction summaries (never reasoning or tool payloads).",
@@ -283,13 +291,13 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
         return {
           content:
             `${hits.length} match(es) for "${query}" (scope: ${scope}).\n\n${lines.join("\n")}` +
-            `\n\nRead more with memory_summaries (summaries) or memory_history (full messages).${partialNote}${vectorNote}`,
+            `\n\nRead more with memory.summaries (summaries) or memory.history (full messages).${partialNote}${vectorNote}`,
         };
       },
     });
 
     editor.add({
-      name: "memory_summaries",
+      name: "summaries",
       description: [
         "Read compaction summaries stored for this project, plus the current repository state.",
         "Actions: list, search, read (detail brief|full|sections), repo.",
@@ -363,7 +371,7 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
     });
 
     editor.add({
-      name: "memory_history",
+      name: "history",
       description: [
         "Inspect the full message timeline of a session: list sessions, read a page, search inside it, or fetch one message.",
         "action=search returns only a window around the occurrences (context=window width, windows=clusters per message), never the full message — prefer it over action=read to inspect a long conversation.",

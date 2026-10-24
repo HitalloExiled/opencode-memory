@@ -63,7 +63,7 @@ export async function captureLatestCompaction(
  * One system block per session. The handoff is deliberately limited to the
  * Objective/Next Move sections: the raw summary body is model-generated text
  * and, injected verbatim, is both a prompt-injection surface and a large
- * prefix-cache cost. It stays one call away via memory_summaries.
+ * prefix-cache cost. It stays one call away via memory.summaries.
  */
 export function buildInjection(
   repo: string,
@@ -95,7 +95,7 @@ export function buildInjection(
   return clip(
     parts.join("\n\n"),
     injectMax(),
-    `\n\n… (truncated; use memory_summaries read ${record ? record.messageID : "latest"} for the full summary)`,
+    `\n\n… (truncated; use memory.summaries read ${record ? record.messageID : "latest"} for the full summary)`,
   );
 }
 
