@@ -26,7 +26,7 @@ baixados automaticamente na primeira consulta que usa a camada semântica
 O plugin é carregado como pacote local em `~/.config/opencode/plugins/memory`.
 
 > Pré-publicação: enquanto o plugin não está publicado, o fluxo acima é o
-> caminho de instalação. O repo `agent-toolbelt` consome este projeto como
+> caminho de instalação. O repo `opencode-tools` consome este projeto como
 > **git submodule** em `plugins/memory` e faz o mesmo symlink via `setup.sh`.
 
 ## O que o plugin faz

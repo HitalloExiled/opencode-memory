@@ -23,7 +23,7 @@ const FIXTURES = [
     ts: "2026-10-27 09:00:01",
     category: "config",
     title: "Project note alpha",
-    content: "Alpha fact about the project.\nScope: project:agent-toolbelt",
+    content: "Alpha fact about the project.\nScope: project:opencode-tools",
     author: "build",
     disputedAt: null,
     retractedAt: null,
@@ -50,7 +50,7 @@ const FIXTURES = [
     ts: "2026-10-27 09:00:04",
     category: "decision",
     title: "Disputed project note delta",
-    content: "Delta decision, disputed.\nScope: project:agent-toolbelt",
+    content: "Delta decision, disputed.\nScope: project:opencode-tools",
     author: null,
     disputedAt: "2026-10-27 09:30:00",
     retractedAt: null,
@@ -77,7 +77,7 @@ const FIXTURES = [
     ts: "2026-10-27 09:00:07",
     category: "general",
     title: "Retracted note",
-    content: "Eta noise.\nScope: project:agent-toolbelt",
+    content: "Eta noise.\nScope: project:opencode-tools",
     author: null,
     disputedAt: null,
     retractedAt: "2026-10-27 09:40:00",
@@ -131,14 +131,14 @@ afterAll(async () => {
 
 describe("scopeOf", () => {
   test("reads the first Scope line", () => {
-    expect(scopeOf("content\nScope: project:agent-toolbelt\nmore")).toBe("project:agent-toolbelt");
+    expect(scopeOf("content\nScope: project:opencode-tools\nmore")).toBe("project:opencode-tools");
     expect(scopeOf("no scope here")).toBe("");
   });
 });
 
 describe("relevantNotes", () => {
   test("keeps project-scoped, machine-scoped (named and bare) and disputed notes", async () => {
-    const notes = await relevantNotes("/some/path/agent-toolbelt");
+    const notes = await relevantNotes("/some/path/opencode-tools");
     const titles = notes.map((note) => note.title);
     expect(titles).toContain("Project note alpha");
     expect(titles).toContain("Bare machine note beta");
@@ -153,7 +153,7 @@ describe("relevantNotes", () => {
   });
 
   test("flags disputed notes", async () => {
-    const notes = await relevantNotes("/some/path/agent-toolbelt");
+    const notes = await relevantNotes("/some/path/opencode-tools");
     const delta = notes.find((note) => note.title === "Disputed project note delta");
     expect(delta?.disputed).toBe(true);
     const alpha = notes.find((note) => note.title === "Project note alpha");
@@ -163,9 +163,9 @@ describe("relevantNotes", () => {
   test("caps at MEMORY_NOTES_INJECT and supports 0 (disabled)", async () => {
     try {
       process.env.MEMORY_NOTES_INJECT = "2";
-      expect((await relevantNotes("/some/path/agent-toolbelt")).length).toBe(2);
+      expect((await relevantNotes("/some/path/opencode-tools")).length).toBe(2);
       process.env.MEMORY_NOTES_INJECT = "0";
-      expect(await relevantNotes("/some/path/agent-toolbelt")).toEqual([]);
+      expect(await relevantNotes("/some/path/opencode-tools")).toEqual([]);
     } finally {
       process.env.MEMORY_NOTES_INJECT = "10";
     }
@@ -181,7 +181,7 @@ describe("relevantNotes", () => {
   test("degrades to empty when there is no notes database", async () => {
     const empty = await mkdtemp(join(testBase, "memory-notes-empty-"));
     process.env.MEMORY_DATA_DIR = empty;
-    expect(await relevantNotes("/some/path/agent-toolbelt")).toEqual([]);
+    expect(await relevantNotes("/some/path/opencode-tools")).toEqual([]);
     process.env.MEMORY_DATA_DIR = dataDir;
     await rm(empty, { recursive: true, force: true });
   });
@@ -194,11 +194,11 @@ describe("notesSection", () => {
 
   test("renders id, category, scope, author and clipped content", async () => {
     process.env.MEMORY_NOTES_INJECT = "10";
-    const notes = await relevantNotes("/some/path/agent-toolbelt");
+    const notes = await relevantNotes("/some/path/opencode-tools");
     const section = notesSection(notes);
     expect(section).toBeDefined();
     expect(section).toContain("#1 [config]");
-    expect(section).toContain("scope: project:agent-toolbelt");
+    expect(section).toContain("scope: project:opencode-tools");
     expect(section).toContain("by build");
     expect(section).toContain("⚠ disputed");
   });
