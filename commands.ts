@@ -74,6 +74,22 @@ const COMMANDS: Definition[] = [
     description: "Show the current repository state",
     prompt: () => 'Call memory.summaries with action="repo" and report the result verbatim.',
   },
+  {
+    name: "recall",
+    description: 'Force a memory search for something ("what did we decide X", "when did X happen", "where is Y")',
+    prompt: (args) => {
+      const query = args.trim();
+      if (!query) return "Usage: /recall <something to recall> — e.g. /recall where is the opencode source clone";
+      const q = query.replace(/"/g, '\\"');
+      return [
+        `Force a memory search for "${q}" — do not answer from context alone; query the memory surfaces:`,
+        `1. Long-term notes (curated knowledge: decisions, solved problems, config): run \`notes search "${q}"\` via the notes CLI, if that CLI is available on this machine.`,
+        `2. Conversation index (what was said/done in past sessions): call memory.search with query="${q}", scope="project"; if nothing is found, retry with scope="all".`,
+        '3. If the query is about a specific session or "when did X happen": use memory.history (action="sessions", then action="search" with a cursor into the session).',
+        "Report every hit with its source (note #N / session id + timestamp). If no surface has it, say so explicitly — it may predate the index (mention /index-all), or it may be a durable fact worth registering as a note.",
+      ].join("\n");
+    },
+  },
 ];
 
 export async function registerCommands(ctx: PluginContext) {

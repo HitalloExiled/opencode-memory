@@ -84,6 +84,7 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
       name: "search",
       description: [
         "Search past conversations and compaction summaries across sessions of this project.",
+        "Use BEFORE rediscovering what a past session may already have found: machine facts (paths, binaries, versions, quirks), decisions and their rationale, what was said or done. Also the source for 'when did X happen' and 'what did we decide about X'.",
         "The index holds only user text, assistant text and compaction summaries (never reasoning or tool payloads).",
         "Search is hybrid: keyword (FTS5) plus local CPU semantic search, fused via RRF; hits are tagged via: fts|vec|fts+vec.",
         "Actions: search (default), stats, reindex, index-all, embed.",
@@ -304,6 +305,7 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
       name: "summaries",
       description: [
         "Read compaction summaries stored for this project, plus the current repository state.",
+        "Use to recover where a past session left off (Objective/Next Move) or to inspect the repository state as of a past session.",
         "Actions: list, search, read (detail brief|full|sections), repo.",
         "Read-only and scoped to the current project unless scope=all.",
       ].join(" "),
@@ -379,6 +381,7 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
       name: "history",
       description: [
         "Inspect the full message timeline of a session: list sessions, read a page, search inside it, or fetch one message.",
+        "Use for 'what happened in session X' and 'when did X occur' — it is the authoritative source for when things happened.",
         "action=search returns only a window around the occurrences (context=window width, windows=clusters per message), never the full message — prefer it over action=read to inspect a long conversation.",
         "Tool calls and reasoning are excluded unless includeTools/includeReasoning is set.",
       ].join(" "),
