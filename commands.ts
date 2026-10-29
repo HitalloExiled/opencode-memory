@@ -90,6 +90,67 @@ const COMMANDS: Definition[] = [
       ].join("\n");
     },
   },
+  {
+    name: "remember",
+    description:
+      'Persist a durable fact to persistent memory ("/remember <fact>"; optional scope prefix: machine, project, project:<name>)',
+    prompt: (args) => {
+      const text = args.trim();
+      if (!text) {
+        return 'Usage: /remember <fact> — e.g. /remember I prefer 4-space indentation, or /remember project we are refactoring the payment module. Optional scope prefix: machine (default), project (this project), project:<name>.';
+      }
+      // Only a colon marks an explicit scope, so a fact that merely starts
+      // with the word "machine"/"project" stays verbatim:
+      //   machine: <fact>          -> machine scope
+      //   project: <fact>          -> the current project
+      //   project:<name> <fact>    -> that project
+      const match = text.match(/^(machine:|project:(\S+)?)(?:\s+([\s\S]*))?$/);
+      const scopePrefix = match?.[1];
+      const scope =
+        scopePrefix === "machine:"
+          ? "machine"
+          : scopePrefix?.startsWith("project:")
+            ? (match?.[2] ? `project:${match[2]}` : "project")
+            : "machine";
+      const fact = scopePrefix ? (match?.[3] ?? "").trim() : text.trim();
+      if (!fact) {
+        return "Usage: /remember <fact> — e.g. /remember I prefer 4-space indentation, or /remember project: we are refactoring the payment module.";
+      }
+      return [
+        `The user is explicitly persisting this durable fact to persistent memory. Call memory.profile with action="set", value="${fact.replace(/"/g, '\\"')}", scope="${scope}"${
+          scope === "project" ? ' (it resolves to the current project)' : ""
+        }.`,
+        'Persist the text VERBATIM — do not paraphrase, translate, or expand it (do digest it down only if it contains obvious conversation filler such as "the user asked to").',
+        "First call memory.profile with action=\"get\": if an existing fact already says essentially the same thing, update that fact in place instead (pass its id) instead of adding a duplicate.",
+        'Then reply with exactly one line, e.g. "Remembered (#3, machine): <fact>" — no tool calls after that, nothing else.',
+      ].join("\n");
+    },
+  },
+  {
+    name: "forget",
+    description: 'Remove a fact from persistent memory ("/forget <text or id>")',
+    prompt: (args) => {
+      const text = args.trim();
+      if (!text) {
+        return 'Usage: /forget <text or id> — e.g. /forget 3 or /forget I prefer 4-space indentation. Call memory.profile with action=get to list the facts and their ids.';
+      }
+      const idMatch = text.match(/^#?(\d+)$/);
+      if (idMatch) {
+        return [
+          `The user is explicitly removing persistent-memory fact #${idMatch[1]}. Call memory.profile with action="remove", id=${idMatch[1]}.`,
+          'Then reply with exactly one line, e.g. "Forgot #3" — no tool calls after that, nothing else.',
+        ].join("\n");
+      }
+      const q = text.replace(/"/g, '\\"');
+      return [
+        `The user is explicitly removing a fact from persistent memory. Call memory.profile with action="get" (pass all=true to see every scope).`,
+        `Match the user's text against the stored facts (case-insensitive; a fact matches when the user's text appears in it or the two clearly say the same thing).`,
+        `If exactly one fact matches, call memory.profile with action="remove" and its id, then reply with exactly one line, e.g. "Forgot #3: <fact>" — nothing else.`,
+        'If several facts match, do NOT remove anything: list the matching facts with their ids in one short block and ask the user which one to forget.',
+        'If none matches, say so in one line and list the current facts with their ids so the user can pick one.',
+      ].join("\n");
+    },
+  },
 ];
 
 export async function registerCommands(ctx: PluginContext) {

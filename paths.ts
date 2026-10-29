@@ -46,6 +46,28 @@ export function jsonIndexPath(): string {
   return join(dataRoot(), "index.json");
 }
 
+/**
+ * Persistent memory (profile): durable world/user facts, always injected at
+ * session start. A sibling of the notes DB — the memory root holds all
+ * durable memory of the agent, and this file is owned by the memory plugin
+ * alone (the notes layer never touches it).
+ */
+export function profilePath(): string {
+  return join(dataRoot(), "profile.json");
+}
+
+/** MEMORY_PROFILE_INJECT: how many profile facts to inject ("0" disables). */
+export function profileInjectLimit(): number {
+  const value = Number(process.env.MEMORY_PROFILE_INJECT ?? "12");
+  return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 12;
+}
+
+/** MEMORY_PROFILE_MAX: char budget of the injected profile section. */
+export function profileSectionMax(): number {
+  const value = Number(process.env.MEMORY_PROFILE_MAX ?? "3000");
+  return Number.isFinite(value) && value > 200 ? Math.floor(value) : 3000;
+}
+
 export function summaryKeep(): number {
   const value = Number(process.env.MEMORY_SUMMARY_KEEP ?? "20");
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : 20;

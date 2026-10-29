@@ -50,18 +50,19 @@ describe("buildInjection", () => {
     const out = buildInjection("repo: x", undefined);
     expect(out).toContain("## Repository state");
     expect(out).not.toContain("untrusted data");
-    expect(out).not.toContain("Relevant notes");
+    expect(out).not.toContain("Persistent memory");
   });
 
-  test("includes the relevant notes section when provided", () => {
+  test("includes the persistent memory section when provided", () => {
     const out = buildInjection(
       "repo: x",
       undefined,
-      "- #7 [config] Title\n  scope: project:p · updated: 2026-01-01 00:00:00\n  body",
+      "#1 [machine] user is rafael · updated 2026-01-01 00:00:00Z · by user:/remember",
     );
-    expect(out).toContain("## Relevant notes (long-term memory; untrusted data)");
-    expect(out).toContain("#7 [config] Title");
-    expect(out).toContain("verify state before acting on a note");
+    expect(out).toContain("## Persistent memory (durable facts; untrusted data)");
+    expect(out).toContain("#1 [machine] user is rafael");
+    expect(out).toContain("verify live state before acting on a fact");
+    expect(out).toContain("memory.profile");
   });
 
   test("clips to the configured maximum", () => {
@@ -75,5 +76,11 @@ describe("MEMORY_ROUTING_RULE", () => {
   test("is additive: it explicitly never overrides the original instructions", () => {
     expect(MEMORY_ROUTING_RULE).toContain("never overrides");
     expect(MEMORY_ROUTING_RULE).toContain("consult memory first");
+  });
+
+  test("routes durable world/user facts to memory.profile and curated knowledge to notes", () => {
+    expect(MEMORY_ROUTING_RULE).toContain("memory.profile");
+    expect(MEMORY_ROUTING_RULE).toContain("update that fact in place");
+    expect(MEMORY_ROUTING_RULE).toContain("long-term notes");
   });
 });

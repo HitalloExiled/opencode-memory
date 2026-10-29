@@ -7,6 +7,7 @@ import { cosine, embedDocs, getEngine, rrfFuse } from "./embed.js";
 import { embedDisabled, embedModelName } from "./paths.js";
 import { backfillProject, indexAllProjects, reindexProject, indexSummaryFiles } from "./indexer.js";
 import { resolveProjectID } from "./projects.js";
+import { loadProfile, removeFact, renderFactLine, relevantFacts, resolveScope, setFact } from "./profile.js";
 import { repoSnapshot } from "./repo.js";
 import {
   findSummary,
@@ -537,6 +538,96 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
         }
 
         return { content: `Unknown action "${action}". Use sessions, read, search or message.` };
+      },
+      options: { namespace: "memory" },
+    });
+
+    editor.add({
+      name: "profile",
+      description: [
+        "Persistent memory: durable facts about the surrounding world that keep being true after this session ends — who the user is, their preferences, ongoing work, machine facts (paths, binaries, versions, quirks).",
+        "The stored facts are injected at the start of every session (see the 'Persistent memory' section of the <memory-context> block); that is what makes this store worth writing to.",
+        "Facts are free text, stored verbatim, with stable ids. Scope: machine (default, every session) or project:<name> (only that project); 'project' resolves to the current project.",
+        "Keep the profile lean: before adding a fact, check whether one already covers it — update in place (pass its id) or remove the obsolete one instead of duplicating. Digest the fact down to the durable claim (no conversation context, no 'the user asked to…').",
+        "Curated knowledge (decisions and rationale, solved problems, configuration) belongs in the notes layer, not here.",
+        "Actions: get (default), set, remove.",
+      ].join(" "),
+      input: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: ["get", "set", "remove"], description: "Defaults to get." },
+          value: {
+            type: "string",
+            description: "The durable fact, verbatim and short (max 500 chars). Required for action=set.",
+          },
+          scope: {
+            type: "string",
+            description: 'For action=set: "machine" (default), "project" (the current project), or "project:<name>".',
+          },
+          id: {
+            type: "number",
+            description:
+              "For action=set: update this existing fact in place instead of adding a new one. For action=remove: the fact to remove.",
+          },
+          all: {
+            type: "boolean",
+            description: "For action=get: list facts of every scope, not just machine + the current project.",
+          },
+        },
+        additionalProperties: false,
+      },
+      async execute(raw, context) {
+        const input = record(raw);
+        const action = str(input, "action") ?? "get";
+        const { directory } = await currentProject(ctx, context.sessionID);
+
+        if (action === "set") {
+          const value = str(input, "value");
+          if (!value) return { content: "Provide `value` for action=set." };
+          const scope = resolveScope(str(input, "scope"), directory);
+          const id = typeof input.id === "number" && Number.isInteger(input.id) ? input.id : undefined;
+          try {
+            const doc = await setFact(value, { scope, id, source: context.sessionID });
+            const fact = id !== undefined
+              ? doc.facts.find((entry) => entry.id === id)
+              : doc.facts[doc.facts.length - 1];
+            return {
+              content:
+                `${id !== undefined ? `Fact #${id} updated` : `Fact #${fact?.id ?? "?"} persisted`}` +
+                ` (${fact?.scope ?? scope}). It is injected at the start of sessions (machine scope: all; project scope: only that project).`,
+            };
+          } catch (error) {
+            return { content: `Could not persist the fact: ${error instanceof Error ? error.message : String(error)}` };
+          }
+        }
+
+        if (action === "remove") {
+          const id = typeof input.id === "number" && Number.isInteger(input.id) ? input.id : NaN;
+          if (!Number.isInteger(id)) return { content: "Provide `id` for action=remove (see action=get for the ids)." };
+          try {
+            await removeFact(id);
+            return { content: `Fact #${id} removed from persistent memory.` };
+          } catch (error) {
+            return { content: `Could not remove the fact: ${error instanceof Error ? error.message : String(error)}` };
+          }
+        }
+
+        if (action === "get") {
+          const doc = await loadProfile();
+          const facts = (input.all === true
+            ? [...doc.facts].sort((a, b) => b.updated - a.updated)
+            : relevantFacts(doc, directory)).map(renderFactLine);
+          const scopeNote = input.all === true ? "all scopes" : "machine + current project";
+          if (facts.length === 0) {
+            return {
+              content: `No persistent facts yet (${scopeNote}). Persist one with action=set (value, optional scope).`,
+            };
+          }
+          const header = `Persistent memory facts (${facts.length}, ${scopeNote}, newest first):`;
+          return { content: `${header}\n\n${facts.join("\n")}\n\nUpdate a fact in place with action=set and its id; remove with action=remove.` };
+        }
+
+        return { content: `Unknown action "${action}". Use get, set or remove.` };
       },
       options: { namespace: "memory" },
     });
