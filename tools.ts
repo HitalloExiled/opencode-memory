@@ -79,7 +79,7 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
     editor.namespace({
       name: "memory",
       description:
-        "Local memory for this machine: hybrid search over past conversations and compaction summaries, summary inspection, and full session timelines. Read-only.",
+        "Local memory for this machine: hybrid search over past conversations and compaction summaries, summary inspection, full session timelines, and the persistent memory profile (durable world/user facts injected at every session start). Read-only except memory.profile.",
     });
     editor.add({
       name: "search",
