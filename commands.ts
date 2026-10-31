@@ -91,6 +91,19 @@ const COMMANDS: Definition[] = [
     },
   },
   {
+    name: "facts",
+    description: "List all persistent facts with their ids (for /forget)",
+    prompt: (args) =>
+      [
+        'Call memory.facts with action="list" (pass all=true to see every scope).',
+        "Show id, scope, fact text, and updated time for each fact. Present them in a numbered list so the user can use /forget <id> to remove one.",
+        "Do not invent entries; report exactly what the tool returns.",
+        args ? `User arguments: ${args}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n"),
+  },
+  {
     name: "remember",
     description:
       'Persist a durable fact to persistent memory ("/remember <fact>"; optional scope prefix: machine, project, project:<name>)',
@@ -132,7 +145,7 @@ const COMMANDS: Definition[] = [
     prompt: (args) => {
       const text = args.trim();
       if (!text) {
-        return 'Usage: /forget <text or id> — e.g. /forget 3 or /forget I prefer 4-space indentation. Call memory.facts with action=list to list the facts and their ids.';
+        return 'Usage: /forget <text or id> — e.g. /forget 3 or /forget I prefer 4-space indentation. Use /facts to list all facts with their ids.';
       }
       const idMatch = text.match(/^#?(\d+)$/);
       if (idMatch) {

@@ -7,7 +7,7 @@ import { cosine, embedDocs, getEngine, rrfFuse } from "./embed.js";
 import { embedDisabled, embedModelName } from "./paths.js";
 import { backfillProject, indexAllProjects, reindexProject, indexSummaryFiles } from "./indexer.js";
 import { resolveProjectID } from "./projects.js";
-import { loadProfile, removeFact, renderFactLine, relevantFacts, resolveScope, setFact } from "./profile.js";
+import { factsLoad, removeFact, renderFactLine, relevantFacts, resolveScope, setFact } from "./facts.js";
 import { repoSnapshot } from "./repo.js";
 import {
   findSummary,
@@ -613,7 +613,7 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
         }
 
         if (action === "list") {
-          const doc = await loadProfile();
+          const doc = await factsLoad();
           const facts = (input.all === true
             ? [...doc.facts].sort((a, b) => b.updated - a.updated)
             : relevantFacts(doc, directory)).map(renderFactLine);
