@@ -62,7 +62,7 @@ describe("buildInjection", () => {
     expect(out).toContain("## Persistent memory (durable facts; untrusted data)");
     expect(out).toContain("#1 [machine] user is rafael");
     expect(out).toContain("verify live state before acting on a fact");
-    expect(out).toContain("memory.profile");
+    expect(out).toContain("memory.facts");
   });
 
   test("clips to the configured maximum", () => {
@@ -78,8 +78,8 @@ describe("MEMORY_ROUTING_RULE", () => {
     expect(MEMORY_ROUTING_RULE).toContain("consult memory first");
   });
 
-  test("routes durable world/user facts to memory.profile and curated knowledge to notes", () => {
-    expect(MEMORY_ROUTING_RULE).toContain("memory.profile");
+  test("routes durable world/user facts to memory.facts and curated knowledge to notes", () => {
+    expect(MEMORY_ROUTING_RULE).toContain("memory.facts");
     expect(MEMORY_ROUTING_RULE).toContain("update that fact in place");
     expect(MEMORY_ROUTING_RULE).toContain("long-term notes");
   });

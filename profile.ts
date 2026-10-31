@@ -4,9 +4,10 @@
  * preferences, ongoing work, machine facts. Small, current, and always
  * injected at session start (replacing the former relevant-notes section).
  *
- * Standalone-pure by design: this module owns `profile.json` under the
- * plugin's data root (a sibling of the notes DB when the machine runs the
- * notes system). If the file is missing, unreadable, or malformed, every
+ * Standalone-pure by design: this module owns `facts.json` (legacy name
+ * `profile.json`) under the plugin's data root (a sibling of the notes DB
+ * when the machine runs the notes system). If the file is missing, unreadable,
+ * or malformed, every
  * consumer degrades gracefully: the injection carries no profile section
  * and the tools report an empty store.
  *
@@ -19,14 +20,14 @@
  *
  * There is deliberately NO model pass at injection time: the injected text
  * is 1:1 with the store (ids included), so it stays verifiable against
- * `memory.profile get` and deterministic across sessions. Facts are
+ * `memory.facts list` and deterministic across sessions. Facts are
  * digested where they are written (the agent's set calls and the /remember
  * command keep them short and deduplicated), not when they are read back.
  */
 
 import { basename } from "node:path";
 
-import { profileInjectLimit, profilePath, profileSectionMax } from "./paths.js";
+import { factsPath, legacyFactsPath, profileInjectLimit, profileSectionMax } from "./paths.js";
 import { atomicWrite, readText } from "./storage.js";
 import { clip, fmtDate, isRecord, normalizeWhitespace } from "./util.js";
 
@@ -94,15 +95,34 @@ function parseDoc(raw: string | undefined): ProfileDoc {
   }
 }
 
-/** Load the store (missing/unreadable file yields the empty doc). */
+/** Load the store (missing/unreadable file yields the empty doc). With no
+ * explicit path, if facts.json is empty but the pre-rename profile.json
+ * still exists, its facts are merged in (by id, keeping the newest
+ * `updated`) — a one-time lazy migration. */
 export async function loadProfile(path?: string): Promise<ProfileDoc> {
-  const raw = await readText(path ?? profilePath());
-  return parseDoc(raw);
+  const doc = parseDoc(await readText(path ?? factsPath()));
+  if (path === undefined && doc.facts.length === 0) {
+    const legacy = parseDoc(await readText(legacyFactsPath()));
+    if (legacy.facts.length > 0) {
+      const byId = new Map(doc.facts.map((f) => [f.id, f]));
+      for (const fact of legacy.facts) {
+        const existing = byId.get(fact.id);
+        if (existing) {
+          if (fact.updated > existing.updated) byId.set(fact.id, fact);
+        } else {
+          doc.facts.push(fact);
+          byId.set(fact.id, fact);
+        }
+      }
+      doc.facts = [...byId.values()].sort((a, b) => a.id - b.id);
+    }
+  }
+  return doc;
 }
 
 /** Atomic save (temp file + rename); mode 0600 like the rest of the data. */
 export async function saveProfile(doc: ProfileDoc, path?: string): Promise<void> {
-  await atomicWrite(path ?? profilePath(), JSON.stringify(doc, null, 2) + "\n");
+  await atomicWrite(path ?? factsPath(), JSON.stringify(doc, null, 2) + "\n");
 }
 
 /**
@@ -204,7 +224,7 @@ export function profileSection(injection: ProfileInjection): string | undefined 
   if (injection.facts.length === 0) return undefined;
   const lines = injection.facts.map((fact) => `- ${renderFactLine(fact)}`);
   if (injection.omitted > 0) {
-    lines.push(`… (${injection.omitted} more fact(s) not shown — quota reached; use memory.profile get for the full list)`);
+    lines.push(`… (${injection.omitted} more fact(s) not shown — quota reached; use memory.facts list for the full list)`);
   }
   return lines.join("\n");
 }

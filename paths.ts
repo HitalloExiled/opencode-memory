@@ -47,12 +47,21 @@ export function jsonIndexPath(): string {
 }
 
 /**
- * Persistent memory (profile): durable world/user facts, always injected at
+ * Persistent memory (facts): durable world/user facts, always injected at
  * session start. A sibling of the notes DB — the memory root holds all
  * durable memory of the agent, and this file is owned by the memory plugin
  * alone (the notes layer never touches it).
  */
-export function profilePath(): string {
+export function factsPath(): string {
+  return join(dataRoot(), "facts.json");
+}
+
+/**
+ * Pre-rename store (profile.json). Read-only fallback: while facts.json is
+ * empty and this file still exists, its facts are loaded in and migrated on
+ * the first write. A harmless leftover once facts.json holds facts.
+ */
+export function legacyFactsPath(): string {
   return join(dataRoot(), "profile.json");
 }
 

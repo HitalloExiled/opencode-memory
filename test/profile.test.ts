@@ -187,7 +187,7 @@ describe("relevance and injection", () => {
     expect(section).toContain("#2 [project:opencode-tools]");
     expect(section).not.toContain("project:other");
     // No omissions here: all relevant facts fit the quota, so no pointer line.
-    expect(section).not.toContain("memory.profile get");
+    expect(section).not.toContain("memory.facts list");
     const line = renderFactLine(doc.facts.find((fact) => fact.id === 4)!);
     expect(line).toContain("#4");
     expect(line).toContain("updated");

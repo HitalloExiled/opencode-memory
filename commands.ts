@@ -117,11 +117,11 @@ const COMMANDS: Definition[] = [
         return "Usage: /remember <fact> — e.g. /remember I prefer 4-space indentation, or /remember project: we are refactoring the payment module.";
       }
       return [
-        `The user is explicitly persisting this durable fact to persistent memory. Call memory.profile with action="set", value="${fact.replace(/"/g, '\\"')}", scope="${scope}"${
+        `The user is explicitly persisting this durable fact to persistent memory. Call memory.facts with action="remember", value="${fact.replace(/"/g, '\\"')}", scope="${scope}"${
           scope === "project" ? ' (it resolves to the current project)' : ""
         }.`,
         'Persist the text VERBATIM — do not paraphrase, translate, or expand it (do digest it down only if it contains obvious conversation filler such as "the user asked to").',
-        "First call memory.profile with action=\"get\": if an existing fact already says essentially the same thing, update that fact in place instead (pass its id) instead of adding a duplicate.",
+        "First call memory.facts with action=\"list\": if an existing fact already says essentially the same thing, update that fact in place instead (pass its id) instead of adding a duplicate.",
         'Then reply with exactly one line, e.g. "Remembered (#3, machine): <fact>" — no tool calls after that, nothing else.',
       ].join("\n");
     },
@@ -132,20 +132,20 @@ const COMMANDS: Definition[] = [
     prompt: (args) => {
       const text = args.trim();
       if (!text) {
-        return 'Usage: /forget <text or id> — e.g. /forget 3 or /forget I prefer 4-space indentation. Call memory.profile with action=get to list the facts and their ids.';
+        return 'Usage: /forget <text or id> — e.g. /forget 3 or /forget I prefer 4-space indentation. Call memory.facts with action=list to list the facts and their ids.';
       }
       const idMatch = text.match(/^#?(\d+)$/);
       if (idMatch) {
         return [
-          `The user is explicitly removing persistent-memory fact #${idMatch[1]}. Call memory.profile with action="remove", id=${idMatch[1]}.`,
+          `The user is explicitly removing persistent-memory fact #${idMatch[1]}. Call memory.facts with action="forget", id=${idMatch[1]}.`,
           'Then reply with exactly one line, e.g. "Forgot #3" — no tool calls after that, nothing else.',
         ].join("\n");
       }
       const q = text.replace(/"/g, '\\"');
       return [
-        `The user is explicitly removing a fact from persistent memory. Call memory.profile with action="get" (pass all=true to see every scope).`,
+        `The user is explicitly removing a fact from persistent memory. Call memory.facts with action="list" (pass all=true to see every scope).`,
         `Match the user's text against the stored facts (case-insensitive; a fact matches when the user's text appears in it or the two clearly say the same thing).`,
-        `If exactly one fact matches, call memory.profile with action="remove" and its id, then reply with exactly one line, e.g. "Forgot #3: <fact>" — nothing else.`,
+        `If exactly one fact matches, call memory.facts with action="forget" and its id, then reply with exactly one line, e.g. "Forgot #3: <fact>" — nothing else.`,
         'If several facts match, do NOT remove anything: list the matching facts with their ids in one short block and ask the user which one to forget.',
         'If none matches, say so in one line and list the current facts with their ids so the user can pick one.',
       ].join("\n");
