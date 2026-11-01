@@ -90,6 +90,34 @@ const COMMANDS: Definition[] = [
       ].join("\n");
     },
   },
+  {
+    name: "pin",
+    description: 'Pin a note so it is injected at the start of every session ("/pin <note_id>")',
+    prompt: (args) => {
+      const id = args.trim();
+      if (!id) {
+        return "Usage: /pin <note_id> — e.g. /pin 5. Run 'notes list' to see note ids.";
+      }
+      return [
+        `The user wants to pin note #${id}. Run \`notes pin ${id}\` via the notes CLI.`,
+        "Then reply with exactly one line: 'Pinned #${id}.' — nothing else.",
+      ].join("\n");
+    },
+  },
+  {
+    name: "unpin",
+    description: 'Unpin a note so it is no longer injected at session start ("/unpin <note_id>")',
+    prompt: (args) => {
+      const id = args.trim();
+      if (!id) {
+        return "Usage: /unpin <note_id> — e.g. /unpin 3. Run 'notes list' to see note ids.";
+      }
+      return [
+        `The user wants to unpin note #${id}. Run \`notes unpin ${id}\` via the notes CLI.`,
+        "Then reply with exactly one line: 'Unpinned #${id}.' — nothing else.",
+      ].join("\n");
+    },
+  },
 ];
 
 export async function registerCommands(ctx: PluginContext) {

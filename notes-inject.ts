@@ -33,10 +33,10 @@ export interface NoteForInjection {
   content: string;
 }
 
-/** MEMORY_NOTES_INJECT: how many relevant notes to inject ("0" disables). */
+/** MEMORY_NOTES_INJECT: how many pinned notes to inject ("0" disables). */
 export function notesInjectLimit(): number {
-  const value = Number(process.env.MEMORY_NOTES_INJECT ?? "3");
-  return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 3;
+  const value = Number(process.env.MEMORY_NOTES_INJECT ?? "12");
+  return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 12;
 }
 
 function notesDbPath(): string {
@@ -87,10 +87,11 @@ function scopeMatches(scope: string, projectName: string, host: string[]): boole
 }
 
 /**
- * Relevant notes for a session: scoped to the session's project directory
- * name or this machine, never retracted, most recent first, capped at
- * MEMORY_NOTES_INJECT. Disputed notes are kept (flagged) — a suspect note is
- * still a lead, not noise.
+ * Pinned notes for a session: only notes explicitly fixed by the agent,
+ * scoped to the session's project directory or this machine, never
+ * retracted, most recent first, capped at MEMORY_NOTES_INJECT.
+ * Disputed notes are kept (flagged) — a suspect pinned note is still a
+ * lead, not noise.
  */
 export async function relevantNotes(projectDir?: string): Promise<NoteForInjection[]> {
   const limit = notesInjectLimit();
@@ -100,15 +101,13 @@ export async function relevantNotes(projectDir?: string): Promise<NoteForInjecti
   const host = machineIdentifiers();
   const projectName = projectDir ? basename(projectDir.replace(/[\\/]+$/, "")) : "";
   try {
-    // Scope lives in the note content, so filter in JS over the most recent
-    // notes. Retraction is a column (trust lifecycle), not content.
     const rows = db
       .prepare(
         `SELECT id, category, title, content, timestamp, author, disputed_at
          FROM notes
-         WHERE retracted_at IS NULL
+         WHERE retracted_at IS NULL AND pinned = 1
          ORDER BY timestamp DESC
-         LIMIT 200`,
+         LIMIT 50`,
       )
       .all() as Array<Record<string, unknown>>;
     const matched: NoteForInjection[] = [];

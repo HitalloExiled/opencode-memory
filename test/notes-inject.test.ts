@@ -27,6 +27,7 @@ const FIXTURES = [
     author: "build",
     disputedAt: null,
     retractedAt: null,
+    pinned: 1,
   },
   {
     ts: "2026-10-27 09:00:02",
@@ -36,6 +37,7 @@ const FIXTURES = [
     author: null,
     disputedAt: null,
     retractedAt: null,
+    pinned: 1,
   },
   {
     ts: "2026-10-27 09:00:03",
@@ -45,6 +47,7 @@ const FIXTURES = [
     author: null,
     disputedAt: null,
     retractedAt: null,
+    pinned: 1,
   },
   {
     ts: "2026-10-27 09:00:04",
@@ -54,6 +57,7 @@ const FIXTURES = [
     author: null,
     disputedAt: "2026-10-27 09:30:00",
     retractedAt: null,
+    pinned: 1,
   },
   {
     ts: "2026-10-27 09:00:05",
@@ -63,6 +67,7 @@ const FIXTURES = [
     author: null,
     disputedAt: null,
     retractedAt: null,
+    pinned: 0,
   },
   {
     ts: "2026-10-27 09:00:06",
@@ -72,6 +77,7 @@ const FIXTURES = [
     author: null,
     disputedAt: null,
     retractedAt: null,
+    pinned: 0,
   },
   {
     ts: "2026-10-27 09:00:07",
@@ -81,6 +87,7 @@ const FIXTURES = [
     author: null,
     disputedAt: null,
     retractedAt: "2026-10-27 09:40:00",
+    pinned: 1,
   },
   {
     ts: "2026-10-27 09:00:08",
@@ -90,6 +97,17 @@ const FIXTURES = [
     author: null,
     disputedAt: null,
     retractedAt: null,
+    pinned: 0,
+  },
+  {
+    ts: "2026-10-27 09:00:09",
+    category: "general",
+    title: "Non-pinned matching-scope note",
+    content: "Iota fact.\nScope: project:agent-toolbelt",
+    author: "build",
+    disputedAt: null,
+    retractedAt: null,
+    pinned: 0,
   },
 ];
 
@@ -111,14 +129,15 @@ beforeAll(async () => {
       disputed_at TEXT,
       retracted_at TEXT,
       status_reason TEXT,
-      author TEXT
+      author TEXT,
+      pinned INTEGER NOT NULL DEFAULT 0
     );
   `);
   const insert = db.prepare(
-    `INSERT INTO notes (timestamp, category, tags, title, content, disputed_at, retracted_at, author)
-     VALUES (?, ?, NULL, ?, ?, ?, ?, ?)`,
+    `INSERT INTO notes (timestamp, category, tags, title, content, disputed_at, retracted_at, author, pinned)
+     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
   );
-  for (const f of FIXTURES) insert.run(f.ts, f.category, f.title, f.content, f.disputedAt, f.retractedAt, f.author);
+  for (const f of FIXTURES) insert.run(f.ts, f.category, f.title, f.content, f.disputedAt, f.retractedAt, f.author, f.pinned);
 });
 
 afterAll(async () => {
@@ -137,7 +156,7 @@ describe("scopeOf", () => {
 });
 
 describe("relevantNotes", () => {
-  test("keeps project-scoped, machine-scoped (named and bare) and disputed notes", async () => {
+  test("keeps pinned in-scope notes, excludes non-pinned, out-of-scope and retracted ones", async () => {
     const notes = await relevantNotes("/some/path/agent-toolbelt");
     const titles = notes.map((note) => note.title);
     expect(titles).toContain("Project note alpha");
@@ -146,10 +165,20 @@ describe("relevantNotes", () => {
     expect(titles).toContain("Disputed project note delta");
     // Ordered most recent first.
     expect(titles[0]).toBe("Disputed project note delta");
-    // Excluded: other project, global, retracted, unscoped.
-    for (const absent of ["Other project note", "Global note", "Retracted note", "Unscoped note"]) {
+    // Excluded: other project (non-pinned), global (non-pinned), retracted
+    // (even though pinned), unscoped (non-pinned), and matching-scope but
+    // non-pinned.
+    for (const absent of [
+      "Other project note",
+      "Global note",
+      "Retracted note",
+      "Unscoped note",
+      "Non-pinned matching-scope note",
+    ]) {
       expect(titles).not.toContain(absent);
     }
+    // Pinning is the injection gate: only 4 of 9 notes reach the session.
+    expect(notes.length).toBe(4);
   });
 
   test("flags disputed notes", async () => {

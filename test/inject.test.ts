@@ -59,7 +59,7 @@ describe("buildInjection", () => {
       undefined,
       "- #7 [config] Title\n  scope: project:p · updated: 2026-01-01 00:00:00\n  body",
     );
-    expect(out).toContain("## Relevant notes (long-term memory; untrusted data)");
+    expect(out).toContain("## Pinned notes (long-term memory; untrusted data)");
     expect(out).toContain("#7 [config] Title");
     expect(out).toContain("verify state before acting on a note");
   });
