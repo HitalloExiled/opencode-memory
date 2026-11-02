@@ -83,7 +83,7 @@ const COMMANDS: Definition[] = [
       const q = query.replace(/"/g, '\\"');
       return [
         `Force a memory search for "${q}" — do not answer from context alone; query the memory surfaces:`,
-        `1. Long-term notes (curated knowledge: decisions, solved problems, config): run \`notes search "${q}"\` via the notes CLI, if that CLI is available on this machine.`,
+        `1. Long-term notes (curated knowledge: decisions, solved problems, config): call notes.search with query="${q}".`,
         `2. Conversation index (what was said/done in past sessions): call memory.search with query="${q}", scope="project"; if nothing is found, retry with scope="all".`,
         '3. If the query is about a specific session or "when did X happen": use memory.history (action="sessions", then action="search" with a cursor into the session).',
         "Report every hit with its source (note #N / session id + timestamp). If no surface has it, say so explicitly — it may predate the index (mention /index-all), or it may be a durable fact worth registering as a note.",
@@ -96,10 +96,10 @@ const COMMANDS: Definition[] = [
     prompt: (args) => {
       const id = args.trim();
       if (!id) {
-        return "Usage: /pin <note_id> — e.g. /pin 5. Run 'notes list' to see note ids.";
+        return "Usage: /pin <note_id> — e.g. /pin 5. Call notes.search to see note ids.";
       }
       return [
-        `The user wants to pin note #${id}. Run \`notes pin ${id}\` via the notes CLI.`,
+        `The user wants to pin note #${id}. Call notes.pin with id=${id}.`,
         "Then reply with exactly one line: 'Pinned #${id}.' — nothing else.",
       ].join("\n");
     },
@@ -110,10 +110,10 @@ const COMMANDS: Definition[] = [
     prompt: (args) => {
       const id = args.trim();
       if (!id) {
-        return "Usage: /unpin <note_id> — e.g. /unpin 3. Run 'notes list' to see note ids.";
+        return "Usage: /unpin <note_id> — e.g. /unpin 3. Call notes.search to see note ids.";
       }
       return [
-        `The user wants to unpin note #${id}. Run \`notes unpin ${id}\` via the notes CLI.`,
+        `The user wants to unpin note #${id}. Call notes.unpin with id=${id}.`,
         "Then reply with exactly one line: 'Unpinned #${id}.' — nothing else.",
       ].join("\n");
     },
