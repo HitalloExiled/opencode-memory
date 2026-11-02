@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { userInfo } from "node:os";
 import { join } from "node:path";
 
-import { notesSection, relevantNotes, scopeOf } from "../notes-inject.js";
+import { notesSection, relevantNotes } from "../notes-inject.js";
 
 // /tmp is ephemeral in the agent environment: keep scratch state in the repo
 // (untracked) and clean it up afterwards.
@@ -23,7 +23,8 @@ const FIXTURES = [
     ts: "2026-10-27 09:00:01",
     category: "config",
     title: "Project note alpha",
-    content: "Alpha fact about the project.\nScope: project:agent-toolbelt",
+    content: "Alpha fact about the project.",
+    scope: "project:agent-toolbelt",
     author: "build",
     disputedAt: null,
     retractedAt: null,
@@ -33,7 +34,8 @@ const FIXTURES = [
     ts: "2026-10-27 09:00:02",
     category: "config",
     title: "Bare machine note beta",
-    content: "Beta machine fact.\nScope: machine",
+    content: "Beta machine fact.",
+    scope: "machine",
     author: null,
     disputedAt: null,
     retractedAt: null,
@@ -43,7 +45,8 @@ const FIXTURES = [
     ts: "2026-10-27 09:00:03",
     category: "config",
     title: `Machine named note gamma (machine:${userPart})`,
-    content: `Gamma machine fact.\nScope: machine:${userPart}`,
+    content: "Gamma machine fact.",
+    scope: `machine:${userPart}`,
     author: null,
     disputedAt: null,
     retractedAt: null,
@@ -53,7 +56,8 @@ const FIXTURES = [
     ts: "2026-10-27 09:00:04",
     category: "decision",
     title: "Disputed project note delta",
-    content: "Delta decision, disputed.\nScope: project:agent-toolbelt",
+    content: "Delta decision, disputed.",
+    scope: "project:agent-toolbelt",
     author: null,
     disputedAt: "2026-10-27 09:30:00",
     retractedAt: null,
@@ -63,7 +67,8 @@ const FIXTURES = [
     ts: "2026-10-27 09:00:05",
     category: "general",
     title: "Other project note",
-    content: "Epsilon fact.\nScope: project:some-other-project",
+    content: "Epsilon fact.",
+    scope: "project:some-other-project",
     author: null,
     disputedAt: null,
     retractedAt: null,
@@ -73,7 +78,8 @@ const FIXTURES = [
     ts: "2026-10-27 09:00:06",
     category: "general",
     title: "Global note",
-    content: "Zeta global fact.\nScope: global",
+    content: "Zeta global fact.",
+    scope: "global",
     author: null,
     disputedAt: null,
     retractedAt: null,
@@ -83,7 +89,8 @@ const FIXTURES = [
     ts: "2026-10-27 09:00:07",
     category: "general",
     title: "Retracted note",
-    content: "Eta noise.\nScope: project:agent-toolbelt",
+    content: "Eta noise.",
+    scope: "project:agent-toolbelt",
     author: null,
     disputedAt: null,
     retractedAt: "2026-10-27 09:40:00",
@@ -93,7 +100,8 @@ const FIXTURES = [
     ts: "2026-10-27 09:00:08",
     category: "general",
     title: "Unscoped note",
-    content: "Theta fact with no scope line.",
+    content: "Theta fact with no scope.",
+    scope: null,
     author: null,
     disputedAt: null,
     retractedAt: null,
@@ -103,7 +111,8 @@ const FIXTURES = [
     ts: "2026-10-27 09:00:09",
     category: "general",
     title: "Non-pinned matching-scope note",
-    content: "Iota fact.\nScope: project:agent-toolbelt",
+    content: "Iota fact.",
+    scope: "project:agent-toolbelt",
     author: "build",
     disputedAt: null,
     retractedAt: null,
@@ -123,6 +132,7 @@ beforeAll(async () => {
       timestamp TEXT NOT NULL,
       category TEXT NOT NULL,
       tags TEXT,
+      scope TEXT,
       title TEXT NOT NULL,
       content TEXT NOT NULL,
       verified_at TEXT,
@@ -134,10 +144,21 @@ beforeAll(async () => {
     );
   `);
   const insert = db.prepare(
-    `INSERT INTO notes (timestamp, category, tags, title, content, disputed_at, retracted_at, author, pinned)
-     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO notes (timestamp, category, tags, scope, title, content, disputed_at, retracted_at, author, pinned)
+     VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
   );
-  for (const f of FIXTURES) insert.run(f.ts, f.category, f.title, f.content, f.disputedAt, f.retractedAt, f.author, f.pinned);
+  for (const f of FIXTURES)
+    insert.run(
+      f.ts,
+      f.category,
+      f.scope,
+      f.title,
+      f.content,
+      f.disputedAt,
+      f.retractedAt,
+      f.author,
+      f.pinned,
+    );
 });
 
 afterAll(async () => {
@@ -146,13 +167,6 @@ afterAll(async () => {
   delete process.env.MEMORY_NOTES_INJECT;
   await rm(dataDir, { recursive: true, force: true });
   await rm(testBase, { recursive: true, force: true }).catch(() => undefined);
-});
-
-describe("scopeOf", () => {
-  test("reads the first Scope line", () => {
-    expect(scopeOf("content\nScope: project:agent-toolbelt\nmore")).toBe("project:agent-toolbelt");
-    expect(scopeOf("no scope here")).toBe("");
-  });
 });
 
 describe("relevantNotes", () => {
@@ -242,7 +256,7 @@ describe("notesSection", () => {
         updatedAt: "2026-10-27 10:00:00",
         author: "build",
         disputed: false,
-        content: "x".repeat(5000) + "\nScope: machine",
+        content: "x".repeat(5000),
       },
     ]);
     expect(section).toBeDefined();

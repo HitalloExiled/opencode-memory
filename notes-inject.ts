@@ -7,11 +7,11 @@
  * unreadable, or the machine has no notes system at all, the injection simply
  * carries no notes section — every consumer degrades gracefully.
  *
- * Relevance without a query: notes are scoped by convention
- * (Scope: global | project:<name> | machine:<name>). A note is relevant to a
- * session when its scope names the session's project directory or this
- * machine. Global notes are deliberately excluded: they are too broad for
- * per-session injection and stay one notes.search away.
+ * Relevance without a query: notes carry a scope (`scope` column;
+ * `Scope: …` body line for notes written by older clients). A note is
+ * relevant to a session when its scope names the session's project directory
+ * or this machine. Global notes are deliberately excluded: they are too broad
+ * for per-session injection and stay one notes.search away.
  */
 
 import { existsSync } from "node:fs";
@@ -65,12 +65,6 @@ async function openNotesDb(): Promise<Db | null> {
   return null;
 }
 
-/** The note's declared scope: the first `Scope: <value>` line in its content. */
-export function scopeOf(content: string): string {
-  const match = content.match(/^\s*Scope:\s*(\S+)/m);
-  return match?.[1] ?? "";
-}
-
 /** Names that identify this machine: hostname and the user account (whole and first part). */
 function machineIdentifiers(): string[] {
   const user = (userInfo()?.username ?? "").toLowerCase();
@@ -103,7 +97,7 @@ export async function relevantNotes(projectDir?: string): Promise<NoteForInjecti
   try {
     const rows = db
       .prepare(
-        `SELECT id, category, title, content, timestamp, author, disputed_at
+        `SELECT id, category, title, content, scope, timestamp, author, disputed_at
          FROM notes
          WHERE retracted_at IS NULL AND pinned = 1
          ORDER BY timestamp DESC
@@ -113,7 +107,7 @@ export async function relevantNotes(projectDir?: string): Promise<NoteForInjecti
     const matched: NoteForInjection[] = [];
     for (const row of rows) {
       const content = String(row.content ?? "");
-      const scope = scopeOf(content);
+      const scope = row.scope ? String(row.scope) : "";
       if (!scopeMatches(scope, projectName, host)) continue;
       matched.push({
         id: Number(row.id),
