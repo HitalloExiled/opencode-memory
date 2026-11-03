@@ -2,7 +2,8 @@
  * memory plugin (formerly agent-toolbelt).
  *
  * - Captures every completed compaction summary as a Markdown file under XDG data.
- * - Injects the repository state and the previous session handoff once per session.
+ * - Injects the repository state and the previous session handoff on every
+ *   agent-loop request, rendered once per session so the bytes stay stable.
  * - Exposes read-only tools to search summaries and past conversations.
  */
 

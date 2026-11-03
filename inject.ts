@@ -2,9 +2,13 @@
  * Context injection and passive compaction capture.
  *
  * `context` runs only for the agent loop (not for title/compaction/generate),
- * so it is the right place to add one system block per session. A compaction
- * hook only marks the session; the next agent-loop context reads the active
- * context, finds the completed compaction message and stores its summary.
+ * so it is the right place to add the system block. The block is rendered once
+ * per session and then re-pushed unchanged on every request: the server
+ * rebuilds `system` from scratch each time, so a block that is only pushed once
+ * disappears on the next turn and shortens the head of the prompt, which
+ * invalidates the whole prefix cache. A compaction hook only marks the session;
+ * the next agent-loop context reads the active context, finds the completed
+ * compaction message and stores its summary (and re-renders the block).
  */
 
 import type { PluginContext } from "./context.js";
@@ -49,6 +53,9 @@ export async function captureLatestCompaction(
     const captured = await captureCompaction(projectID, info, compaction);
     if (!captured) return;
     state.lastCompactionID = compaction.id;
+    // A compaction rewrites the conversation anyway, so the handoff may be
+    // re-rendered on the next request without paying an extra prefix miss.
+    state.injection = undefined;
     await runtime.index.upsert([toIndexDoc(captured.record)]).catch((error) => {
       console.error(`[memory] could not index summary ${captured.record.messageID}: ${error instanceof Error ? error.message : String(error)}`);
     });
@@ -61,11 +68,11 @@ export async function captureLatestCompaction(
 }
 
 /**
- * Memory-routing guidance, injected once per session as its own system part.
- * It is deliberately an APPEND to the standard system prompt (never a
- * replacement): it only tells the agent when stored memory is the cheaper
- * source than the world, and says so in terms that subordinate it to the
- * original instructions. (Experiment E4: a system-level rule is what makes
+ * Memory-routing guidance, injected on every agent-loop request as its own
+ * system part. It is deliberately an APPEND to the standard system prompt
+ * (never a replacement): it only tells the agent when stored memory is the
+ * cheaper source than the world, and says so in terms that subordinate it to
+ * the original instructions. (Experiment E4: a system-level rule is what makes
  * routing memory-first; E6: injected notes remove the discovery cost.)
  */
 export const MEMORY_ROUTING_RULE =
@@ -78,10 +85,11 @@ export const MEMORY_ROUTING_RULE =
   "- Curated knowledge (decisions, solved problems with symptom/cause/solution, configuration) belongs in the notes layer, not pinned. Pinned notes are injected at session start (12 max, 3000 chars); unpinned notes stay searchable via memory.search.";
 
 /**
- * One system block per session. The handoff is deliberately limited to the
- * Objective/Next Move sections: the raw summary body is model-generated text
- * and, injected verbatim, is both a prompt-injection surface and a large
- * prefix-cache cost. It stays one call away via memory.summaries.
+ * One system block per session, re-pushed verbatim on every request. The
+ * handoff is deliberately limited to the Objective/Next Move sections: the raw
+ * summary body is model-generated text and, injected verbatim, is both a
+ * prompt-injection surface and a large prefix-cache cost. It stays one call
+ * away via memory.summaries.
  *
  * `notes` is the rendered relevant-notes section (see notes-inject.ts); when
  * undefined the block carries no notes at all.
@@ -148,7 +156,7 @@ export async function onContext(
   if (state.projectID !== projectID) {
     const previous = state.projectID;
     state.projectID = projectID;
-    state.injected = false;
+    state.injection = undefined;
     state.captured = false;
     state.lastCompactionID = undefined;
     // The in-memory previous project is a fast path only: after a service
@@ -163,24 +171,36 @@ export async function onContext(
   }
 
   await captureLatestCompaction(ctx, runtime, event.sessionID, info, projectID);
-  if (state.injected) return;
 
-  try {
-    const [repo, summaries, notes] = await Promise.all([
-      repoSnapshot(info.location?.directory, false),
-      listSummaries(projectID, 20).catch(() => []),
-      relevantNotes(info.location?.directory).catch(() => []),
-    ]);
-    // Do not re-inject the current session's own compaction: it is already in
-    // the active context. Prefer the most recent summary from another session.
-    const previous = summaries.find((record) => record.sessionID !== event.sessionID);
-    event.system.push({ type: "text", text: buildInjection(repo, previous, notesSection(notes)) });
-    // Additive routing guidance: its own system part, appended after the
-    // original instructions — never replacing them.
-    event.system.push({ type: "text", text: MEMORY_ROUTING_RULE });
-    state.injected = true;
-  } catch (error) {
-    console.error(`[memory] context injection failed for ${event.sessionID}: ${error instanceof Error ? error.message : String(error)}`);
+  // The server rebuilds `system` for every request, so a block pushed only on
+  // the first one disappears on the next turn: the head of the prompt shrinks
+  // and the provider's prefix cache is invalidated from there on — a full
+  // re-prefill of the whole conversation (measured: 187K tokens, ~127s).
+  // The fix is not "push it again" but "push the same bytes again": render
+  // once per session and reuse it, so the head stays byte-identical.
+  if (!state.injection) {
+    try {
+      const [repo, summaries, notes] = await Promise.all([
+        repoSnapshot(info.location?.directory, false),
+        listSummaries(projectID, 20).catch(() => []),
+        relevantNotes(info.location?.directory).catch(() => []),
+      ]);
+      // Do not re-inject the current session's own compaction: it is already in
+      // the active context. Prefer the most recent summary from another session.
+      const previous = summaries.find((record) => record.sessionID !== event.sessionID);
+      state.injection = {
+        block: buildInjection(repo, previous, notesSection(notes)),
+        rule: MEMORY_ROUTING_RULE,
+      };
+    } catch (error) {
+      console.error(`[memory] context injection failed for ${event.sessionID}: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
   }
+
+  event.system.push({ type: "text", text: state.injection.block });
+  // Additive routing guidance: its own system part, appended after the
+  // original instructions — never replacing them.
+  event.system.push({ type: "text", text: state.injection.rule });
 }
 

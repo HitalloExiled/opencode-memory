@@ -3,9 +3,21 @@
 import type { PluginContext } from "./context.js";
 import type { MemoryIndex } from "./index-db.js";
 
+/** Rendered system parts, cached so every request carries identical bytes. */
+export interface SessionInjection {
+  block: string;
+  rule: string;
+}
+
 export interface SessionRuntime {
   projectID?: string;
-  injected: boolean;
+  /**
+   * Rendered once per session (and re-rendered on a project change or a new
+   * compaction). Reusing it keeps the head of the prompt byte-stable: the
+   * server rebuilds `system` per request, so anything that changes there
+   * invalidates the provider's prefix cache from that point on.
+   */
+  injection?: SessionInjection;
   captured: boolean;
   lastCompactionID?: string;
 }
@@ -33,7 +45,7 @@ export function createRuntime(ctx: PluginContext, index: MemoryIndex): Runtime {
 export function sessionRuntime(runtime: Runtime, sessionID: string): SessionRuntime {
   let state = runtime.sessions.get(sessionID);
   if (!state) {
-    state = { injected: false, captured: false };
+    state = { captured: false };
     runtime.sessions.set(sessionID, state);
     // Bound the map; old sessions are recreated lazily if they come back.
     if (runtime.sessions.size > 500) {
