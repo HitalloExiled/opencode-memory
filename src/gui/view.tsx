@@ -865,6 +865,12 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
     }
   };
 
+  const back = () => {
+    const empty = hits().length === 0 && sessions().length === 0;
+    closeTimeline();
+    if (empty) void reload();
+  };
+
   const totalCount = createMemo(() => (query().trim() ? groups().length : sessions().length));
 
   return (
@@ -1051,7 +1057,7 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
         </Show>
 
         <Show when={selectedSessionID()}>
-          <button type="button" class="mem-back" onClick={closeTimeline}>
+          <button type="button" class="mem-back" onClick={back}>
             ← {t("back")}
           </button>
           <div class="mem-timeline-head">
