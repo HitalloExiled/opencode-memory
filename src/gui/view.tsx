@@ -21,7 +21,7 @@ import {
   type SessionView,
   type Status,
 } from "./contract";
-import { buildQuote, groupHitsBySession, highlightParts, mergeHits, termsOf } from "./filters";
+import { buildQuote, groupHitsBySession, highlightParts, termsOf } from "./filters";
 import { useT } from "./i18n";
 
 const CSS = `
@@ -204,6 +204,8 @@ const CSS = `
 
 type RpcSession = NonNullable<ReturnType<ReturnType<typeof usePlugin>["sessions"]["current"]>>;
 
+const LIST_PAGE_SIZE = 20;
+
 export function MemoryView(props: { session: MountedSession; store: Persisted<ViewState> }) {
   const ctx = usePlugin();
   const t = useT();
@@ -216,20 +218,18 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
   const [error, setError] = createSignal("");
   const [loading, setLoading] = createSignal(false);
   const [loadingMore, setLoadingMore] = createSignal(false);
-  const [refreshKey, setRefreshKey] = createSignal(0);
   const [hydratedSession, setHydratedSession] = createSignal("");
+  const [listPage, setListPage] = createSignal(0);
 
   // Search results (query non-empty).
   const [hits, setHits] = createSignal<HitView[]>([]);
   const [hitsHasMore, setHitsHasMore] = createSignal(false);
-  const [hitsOffset, setHitsOffset] = createSignal(0);
   const [searchPartial, setSearchPartial] = createSignal(false);
   const [vectorNote, setVectorNote] = createSignal("");
 
   // Recent sessions (query empty).
   const [sessions, setSessions] = createSignal<SessionView[]>([]);
   const [sessionsHasMore, setSessionsHasMore] = createSignal(false);
-  const [sessionsOffset, setSessionsOffset] = createSignal(0);
 
   // Timeline.
   const [selectedSessionID, setSelectedSessionID] = createSignal<string | null>(null);
@@ -257,6 +257,7 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
 
   let restoredFor = "";
   let restoreSelected = false;
+  let scrollRef: HTMLDivElement | undefined;
   let listGen = 0;
   let timelineGen = 0;
   let listController: AbortController | undefined;
@@ -296,12 +297,11 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
   const resetList = () => {
     setHits([]);
     setHitsHasMore(false);
-    setHitsOffset(0);
     setSearchPartial(false);
     setVectorNote("");
     setSessions([]);
     setSessionsHasMore(false);
-    setSessionsOffset(0);
+    setListPage(0);
   };
 
   const closeTimeline = () => {
@@ -321,15 +321,17 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
     setQuoteToolbar(null);
   };
 
-  const reload = async () => {
+  const loadList = async (page = 0, reset = false, scrollTop = false) => {
     const gen = ++listGen;
     listController?.abort();
     const controller = new AbortController();
     listController = controller;
     setError("");
     setLoading(true);
-    closeTimeline();
-    resetList();
+    if (reset) {
+      closeTimeline();
+      resetList();
+    }
 
     const session = currentSession();
     if (!session) {
@@ -339,20 +341,24 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
       return;
     }
 
+    const current = Math.max(0, Math.floor(page));
+    const offset = current * LIST_PAGE_SIZE;
     const { client, options } = clientFor(session);
     const callOptions = { ...options, signal: controller.signal };
     const scope = projectOnly() ? "project" : "all";
     const q = query().trim();
 
     // Status is independent of the list; a failure must not hide results.
-    void client
-      .status({ sessionID: session.id }, callOptions)
-      .then((next) => {
-        if (gen === listGen) setStatus(next);
-      })
-      .catch(() => {
-        if (gen === listGen) setStatus(null);
-      });
+    if (current === 0) {
+      void client
+        .status({ sessionID: session.id }, callOptions)
+        .then((next) => {
+          if (gen === listGen) setStatus(next);
+        })
+        .catch(() => {
+          if (gen === listGen) setStatus(null);
+        });
+    }
 
     try {
       if (q) {
@@ -361,27 +367,29 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
             query: q,
             scope,
             sessionID: session.id,
-            limit: 20,
-            offset: 0,
-            backfill: true,
+            limit: LIST_PAGE_SIZE,
+            offset,
+            backfill: current === 0,
           },
           callOptions,
         );
         if (gen !== listGen) return;
         setHits([...result.hits]);
         setHitsHasMore(result.hasMore);
-        setHitsOffset(result.hits.length);
         setSearchPartial(result.partial);
         setVectorNote(result.vectorNote ?? "");
       } else {
         const result = await client.sessions(
-          { scope, sessionID: session.id, limit: 20, offset: 0 },
+          { scope, sessionID: session.id, limit: LIST_PAGE_SIZE, offset },
           callOptions,
         );
         if (gen !== listGen) return;
         setSessions([...result.sessions]);
         setSessionsHasMore(result.hasMore);
-        setSessionsOffset(result.sessions.length);
+      }
+      if (gen === listGen) {
+        setListPage(current);
+        if (scrollTop) scrollRef?.scrollTo({ top: 0 });
       }
     } catch (cause) {
       if (gen === listGen && !controller.signal.aborted) {
@@ -392,52 +400,17 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
     }
   };
 
-  const loadMore = async () => {
-    const session = currentSession();
-    if (!session || loading() || loadingMore()) return;
-    const q = query().trim();
-    if (q ? !hitsHasMore() : !sessionsHasMore()) return;
+  const reload = (page = 0) => loadList(page, true);
 
-    const gen = listGen;
-    const { client, options } = clientFor(session);
-    const scope = projectOnly() ? "project" : "all";
-    setLoadingMore(true);
-    try {
-      if (q) {
-        const result = await client.search(
-          {
-            query: q,
-            scope,
-            sessionID: session.id,
-            limit: 20,
-            offset: hitsOffset(),
-            backfill: false,
-          },
-          options,
-        );
-        if (gen !== listGen) return;
-        const merged = mergeHits(hits(), [...result.hits]);
-        setHits(merged);
-        setHitsOffset(merged.length);
-        setHitsHasMore(result.hasMore);
-        if (result.vectorNote) setVectorNote(result.vectorNote);
-      } else {
-        const result = await client.sessions(
-          { scope, sessionID: session.id, limit: 20, offset: sessionsOffset() },
-          options,
-        );
-        if (gen !== listGen) return;
-        const seen = new Set(sessions().map((entry) => entry.id));
-        const merged = [...sessions(), ...result.sessions.filter((entry) => !seen.has(entry.id))];
-        setSessions(merged);
-        setSessionsOffset(merged.length);
-        setSessionsHasMore(result.hasMore);
-      }
-    } catch (cause) {
-      if (gen === listGen) setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      if (gen === listGen) setLoadingMore(false);
-    }
+  const nextListPage = () => {
+    if (loading()) return;
+    if (!(query().trim() ? hitsHasMore() : sessionsHasMore())) return;
+    void loadList(listPage() + 1, false, true);
+  };
+
+  const previousListPage = () => {
+    if (loading() || listPage() === 0) return;
+    void loadList(listPage() - 1, false, true);
   };
 
   const loadTimeline = async (cursor?: string, replace = false) => {
@@ -785,7 +758,6 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
     query();
     projectOnly();
     props.session.id;
-    refreshKey();
     if (hydratedSession() !== props.session.id) return;
     const restore = restoreSelected;
     const timer = setTimeout(() => {
@@ -819,7 +791,6 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
   });
 
   // Infinite scroll: one sentinel at the bottom of the scroll container.
-  let scrollRef: HTMLDivElement | undefined;
   let sentinel: HTMLDivElement | undefined;
   let observer: IntersectionObserver | undefined;
 
@@ -844,9 +815,7 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
     observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return;
-        if (selectedSessionID()) {
-          if (!paginated()) void loadMoreTimeline();
-        } else void loadMore();
+        if (selectedSessionID() && !paginated()) void loadMoreTimeline();
       },
       { root: scrollRef ?? null, rootMargin: "200px" },
     );
@@ -861,16 +830,10 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
   // Safety net for short pages: if the sentinel is already visible after a
   // page lands, keep filling until it is below the viewport (or the end).
   createEffect(() => {
-    const has = selectedSessionID()
-      ? !paginated() && timelineHasMore()
-      : query().trim()
-        ? hitsHasMore()
-        : sessionsHasMore();
+    const has = selectedSessionID() && !paginated() && timelineHasMore();
     const busy = loading() || loadingMore();
     // Re-run after a page is appended even when `hasMore` stays true.
     messages().length;
-    hits().length;
-    sessions().length;
     if (!has || busy) return;
     const frame = requestAnimationFrame(() => {
       const element = sentinel;
@@ -878,10 +841,7 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
       if (!element || !root) return;
       const rect = element.getBoundingClientRect();
       const rootRect = root.getBoundingClientRect();
-      if (rect.top <= rootRect.bottom + 200) {
-        if (selectedSessionID()) void loadMoreTimeline();
-        else void loadMore();
-      }
+      if (rect.top <= rootRect.bottom + 200) void loadMoreTimeline();
     });
     onCleanup(() => cancelAnimationFrame(frame));
   });
@@ -902,7 +862,7 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
       setQuoteToolbar(null);
       void loadTimeline(undefined, true);
     } else {
-      setRefreshKey((value) => value + 1);
+      void loadList(listPage());
     }
   };
 
@@ -1096,6 +1056,28 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
               )}
             </For>
           </Show>
+
+          <Show when={listPage() > 0 || (query().trim() ? hitsHasMore() : sessionsHasMore())}>
+            <div class="mem-pager">
+              <ctx.ui.Button
+                size="small"
+                variant="ghost"
+                disabled={listPage() === 0 || loading()}
+                onClick={previousListPage}
+              >
+                ← {t("prevPage")}
+              </ctx.ui.Button>
+              <span class="mem-page">{t("page", listPage() + 1)}</span>
+              <ctx.ui.Button
+                size="small"
+                variant="ghost"
+                disabled={!(query().trim() ? hitsHasMore() : sessionsHasMore()) || loading()}
+                onClick={nextListPage}
+              >
+                {t("nextPage")} →
+              </ctx.ui.Button>
+            </div>
+          </Show>
         </Show>
 
         <Show when={selectedSessionID()}>
@@ -1209,12 +1191,11 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
         </Show>
         <Show
           when={
+            selectedSessionID() &&
+            !paginated() &&
             !loading() &&
             !loadingMore() &&
-            totalCount() > 0 &&
-            (selectedSessionID()
-              ? !paginated() && !timelineHasMore()
-              : !(query().trim() ? hitsHasMore() : sessionsHasMore()))
+            !timelineHasMore()
           }
         >
           <div class="mem-end">{t("end")}</div>
