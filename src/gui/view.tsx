@@ -120,7 +120,7 @@ const CSS = `
 .mem-hit { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--v2-border-border-muted); }
 .mem-hit:last-child { border-bottom: 0; }
 .mem-hit-meta { color: var(--v2-text-text-muted); font-size: 10px; }
-.mem-hit-text { font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; }
+.mem-hit-text { font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; user-select: text; cursor: text; }
 .mem-hit-text mark { background: var(--v2-background-bg-warning, rgba(255, 212, 59, .35)); color: inherit; border-radius: 2px; padding: 0 1px; }
 .mem-hit-actions { display: flex; justify-content: flex-end; }
 .mem-more { padding: 6px 10px; color: var(--v2-text-text-muted); font-size: 10.5px; }
@@ -135,8 +135,11 @@ const CSS = `
 }
 .mem-back:hover { color: var(--v2-text-text-base); }
 .mem-timeline-head { display: flex; flex-direction: column; gap: 2px; padding-bottom: 4px; }
+.mem-timeline-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .mem-timeline-title { font-weight: 600; font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
 .mem-timeline-meta { color: var(--v2-text-text-muted); font-size: 10.5px; overflow-wrap: anywhere; }
+.mem-pager { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 2px 0; }
+.mem-page { color: var(--v2-text-text-muted); font-size: 11px; }
 .mem-msg {
   display: flex;
   flex-direction: column;
@@ -162,7 +165,7 @@ const CSS = `
 .mem-kind-summary { color: #e8590c; background: rgba(232,89,12,.12); }
 .mem-msg-meta { color: var(--v2-text-text-muted); font-size: 10px; }
 .mem-badge { color: var(--v2-text-text-faint); font-size: 9.5px; border: 1px solid var(--v2-border-border-muted); border-radius: 999px; padding: 0 5px; }
-.mem-msg-text { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
+.mem-msg-text { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; user-select: text; cursor: text; }
 .mem-msg-actions { display: flex; justify-content: flex-end; }
 .mem-sentinel { height: 1px; flex: 0 0 auto; }
 .mem-end { color: var(--v2-text-text-faint); font-size: 10px; text-align: center; padding: 4px 0 8px; }
@@ -201,11 +204,16 @@ export function MemoryView() {
   const [timelineSession, setTimelineSession] = createSignal<SessionView | null>(null);
   const [messages, setMessages] = createSignal<MessageView[]>([]);
   const [nextCursor, setNextCursor] = createSignal<string | undefined>(undefined);
+  const [previousCursor, setPreviousCursor] = createSignal<string | undefined>(undefined);
   const [timelineHasMore, setTimelineHasMore] = createSignal(false);
   const [timelinePartial, setTimelinePartial] = createSignal(false);
   const [timelineSource, setTimelineSource] = createSignal("");
+  const [paginated, setPaginated] = createSignal(false);
+  const [pageIndex, setPageIndex] = createSignal(1);
+  const messageRefs = new Map<string, HTMLElement>();
 
   const [attaching, setAttaching] = createSignal<string | null>(null);
+  const [selected, setSelected] = createSignal<{ messageID: string; text: string } | null>(null);
   let attachSeq = 0;
 
   const currentSession = (): RpcSession | undefined => ctx.sessions.current();
@@ -267,9 +275,13 @@ export function MemoryView() {
     setTimelineSession(null);
     setMessages([]);
     setNextCursor(undefined);
+    setPreviousCursor(undefined);
     setTimelineHasMore(false);
     setTimelinePartial(false);
     setTimelineSource("");
+    setPageIndex(1);
+    messageRefs.clear();
+    setSelected(null);
   };
 
   const reload = async () => {
@@ -391,7 +403,7 @@ export function MemoryView() {
     }
   };
 
-  const loadTimeline = async (cursor?: string) => {
+  const loadTimeline = async (cursor?: string, replace = false) => {
     const session = currentSession();
     const sessionID = selectedSessionID();
     if (!session || !sessionID) return;
@@ -410,6 +422,10 @@ export function MemoryView() {
       if (gen !== timelineGen) return;
       setTimelineSession(result.session);
       setMessages((previous) => {
+        if (replace) {
+          messageRefs.clear();
+          return result.messages.map((message) => ({ ...message, files: [...message.files] }));
+        }
         const seen = new Set(previous.map((message) => message.id));
         const fresh = result.messages
           .filter((message) => !seen.has(message.id))
@@ -417,6 +433,7 @@ export function MemoryView() {
         return [...previous, ...fresh];
       });
       setNextCursor(result.nextCursor);
+      setPreviousCursor(result.previousCursor);
       setTimelineHasMore(result.hasMore);
       setTimelinePartial(result.partial);
       setTimelineSource(result.source);
@@ -434,23 +451,63 @@ export function MemoryView() {
     setTimelineSession(session);
     setMessages([]);
     setNextCursor(undefined);
+    setPreviousCursor(undefined);
     setTimelineHasMore(false);
     setTimelinePartial(false);
     setTimelineSource("");
-    void loadTimeline(undefined);
+    setPageIndex(1);
+    messageRefs.clear();
+    setSelected(null);
+    void loadTimeline(undefined, true);
   };
 
   const loadMoreTimeline = () => {
-    if (loadingMore() || !timelineHasMore() || !nextCursor()) return;
+    if (paginated() || loadingMore() || !timelineHasMore() || !nextCursor()) return;
     void loadTimeline(nextCursor());
   };
 
-  const addToContext = async (
-    sessionID: string,
-    messageID: string,
-    title?: string,
-    sourceQuery?: string,
-  ) => {
+  const nextPage = () => {
+    const cursor = nextCursor();
+    if (!cursor || loadingMore()) return;
+    setPageIndex((value) => value + 1);
+    setSelected(null);
+    void loadTimeline(cursor, true);
+  };
+
+  const previousPage = () => {
+    const cursor = previousCursor();
+    if (!cursor || loadingMore()) return;
+    setPageIndex((value) => Math.max(1, value - 1));
+    setSelected(null);
+    void loadTimeline(cursor, true);
+  };
+
+  const togglePaginated = () => {
+    setPaginated((value) => !value);
+    setPageIndex(1);
+    setPreviousCursor(undefined);
+    setNextCursor(undefined);
+    setMessages([]);
+    messageRefs.clear();
+    setSelected(null);
+    void loadTimeline(undefined, true);
+  };
+
+  const selectionFor = (messageID: string): string | undefined =>
+    selected()?.messageID === messageID ? selected()?.text : undefined;
+
+  interface QuoteTarget {
+    sessionID: string;
+    messageID: string;
+    title?: string | undefined;
+    query?: string | undefined;
+    rawText?: string | undefined;
+    selection?: string | undefined;
+    created?: number | undefined;
+    kind?: string | undefined;
+  }
+
+  const addToContext = async (target: QuoteTarget) => {
     const routed = currentSession();
     const screen = ctx.screen.current();
     if (!routed || !screen) {
@@ -470,18 +527,65 @@ export function MemoryView() {
       return;
     }
 
-    setAttaching(messageID);
+    setAttaching(target.messageID);
     try {
-      const { client, options } = clientFor(routed);
-      const content = await client.content(
-        {
-          sessionID,
-          messageID,
-          query: sourceQuery?.trim() || undefined,
+      let quoteText = "";
+      let sourceTitle = target.title;
+      if (target.selection) {
+        // Quote exactly what the user selected; the offset is searched in the
+        // raw message text so the agent can expand around the same spot.
+        const total = target.rawText?.length ?? target.selection.length;
+        const found = target.rawText ? target.rawText.indexOf(target.selection) : -1;
+        const start = found >= 0 ? found : 0;
+        const length = Math.min(target.selection.length, quoteChars());
+        quoteText = buildQuote({
+          sessionID: target.sessionID,
+          messageID: target.messageID,
+          title: target.title,
+          kind: kindLabel(target.kind ?? "assistant"),
+          created: target.created ?? 0,
+          text: target.selection.slice(0, length),
+          total,
+          offset: start,
+          length,
+          start,
+          end: start + length,
           limit: quoteChars(),
-        },
-        options,
-      );
+          selected: true,
+        });
+      } else {
+        const { client, options } = clientFor(routed);
+        const content = await client.content(
+          {
+            sessionID: target.sessionID,
+            messageID: target.messageID,
+            query: target.query?.trim() || undefined,
+            limit: quoteChars(),
+          },
+          options,
+        );
+        if (!content.text) {
+          ctx.toast.show({ title: t("toast.contentError"), variant: "error" });
+          return;
+        }
+        quoteText = buildQuote({
+          sessionID: target.sessionID,
+          messageID: target.messageID,
+          title: content.title ?? target.title,
+          kind: kindLabel(content.kind),
+          created: content.created,
+          text: content.text,
+          total: content.total,
+          offset: content.offset,
+          length: content.length,
+          start: content.start,
+          end: content.end,
+          limit: quoteChars(),
+          query: target.query,
+        });
+        sourceTitle = content.title ?? target.title;
+      }
+
       if (currentSession()?.id !== routed.id) {
         ctx.toast.show({
           title: t("toast.noSession"),
@@ -490,31 +594,16 @@ export function MemoryView() {
         });
         return;
       }
-      if (!content.text) {
+      if (!quoteText) {
         ctx.toast.show({ title: t("toast.contentError"), variant: "error" });
         return;
       }
-      const text = buildQuote({
-        sessionID,
-        messageID,
-        title: content.title ?? title,
-        kind: kindLabel(content.kind),
-        created: content.created,
-        text: content.text,
-        total: content.total,
-        offset: content.offset,
-        length: content.length,
-        start: content.start,
-        end: content.end,
-        limit: quoteChars(),
-        query: sourceQuery,
-      });
       screen.composer.attach({
         type: "quote",
-        commentID: `memory-${messageID}-${++attachSeq}`,
-        text,
+        commentID: `memory-${target.messageID}-${++attachSeq}`,
+        text: quoteText,
         source: {
-          label: t("sourceLabel", content.title ?? title ?? sessionID),
+          label: t("sourceLabel", sourceTitle ?? target.sessionID),
           icon: "file-document",
           subject: "the memory of a past session",
         },
@@ -557,6 +646,32 @@ export function MemoryView() {
     );
   });
 
+  // Keep the last selection made inside a message. Reading it at click time
+  // is fragile (the click can collapse the selection), so snapshot it here.
+  createEffect(() => {
+    const onSelectionChange = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) {
+        setSelected(null);
+        return;
+      }
+      const text = selection.toString().trim();
+      if (!text) {
+        setSelected(null);
+        return;
+      }
+      for (const [messageID, element] of messageRefs) {
+        if (element.contains(selection.anchorNode) && element.contains(selection.focusNode)) {
+          setSelected({ messageID, text });
+          return;
+        }
+      }
+      setSelected(null);
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    onCleanup(() => document.removeEventListener("selectionchange", onSelectionChange));
+  });
+
   // Reload when the routed session, scope, query or refresh key changes.
   createEffect(() => {
     query();
@@ -575,8 +690,9 @@ export function MemoryView() {
     observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return;
-        if (selectedSessionID()) void loadMoreTimeline();
-        else void loadMore();
+        if (selectedSessionID()) {
+          if (!paginated()) void loadMoreTimeline();
+        } else void loadMore();
       },
       { root: scrollRef ?? null, rootMargin: "200px" },
     );
@@ -592,7 +708,7 @@ export function MemoryView() {
   // page lands, keep filling until it is below the viewport (or the end).
   createEffect(() => {
     const has = selectedSessionID()
-      ? timelineHasMore()
+      ? !paginated() && timelineHasMore()
       : query().trim()
         ? hitsHasMore()
         : sessionsHasMore();
@@ -747,7 +863,12 @@ export function MemoryView() {
                             icon="plus"
                             busy={attaching() === hit.messageID}
                             onClick={() =>
-                              void addToContext(hit.sessionID, hit.messageID ?? hit.id, group.title, query())
+                              void addToContext({
+                                sessionID: hit.sessionID,
+                                messageID: hit.messageID ?? hit.id,
+                                title: group.title,
+                                query: query(),
+                              })
                             }
                           >
                             {t("addToContext")}
@@ -799,8 +920,19 @@ export function MemoryView() {
             ← {t("back")}
           </button>
           <div class="mem-timeline-head">
-            <div class="mem-timeline-title">
-              {timelineSession()?.title || timelineSession()?.id || t("conversation")}
+            <div class="mem-timeline-head-row">
+              <div class="mem-timeline-title">
+                {timelineSession()?.title || timelineSession()?.id || t("conversation")}
+              </div>
+              <button
+                type="button"
+                class="mem-toggle"
+                classList={{ "is-active": paginated() }}
+                title={t("paginateHint")}
+                onClick={togglePaginated}
+              >
+                {t("paginate")}
+              </button>
             </div>
             <div class="mem-timeline-meta">
               {projectLabel(timelineSession()?.projectID, timelineSession()?.directory)}
@@ -809,6 +941,28 @@ export function MemoryView() {
                 : ""}
             </div>
           </div>
+          <Show when={paginated()}>
+            <div class="mem-pager">
+              <ctx.ui.Button
+                size="small"
+                variant="ghost"
+                disabled={!previousCursor() || loadingMore()}
+                onClick={previousPage}
+              >
+                ← {t("prevPage")}
+              </ctx.ui.Button>
+              <span class="mem-page">{t("page", pageIndex())}</span>
+              <ctx.ui.Button
+                size="small"
+                variant="ghost"
+                disabled={!nextCursor() || loadingMore()}
+                onClick={nextPage}
+              >
+                {t("nextPage")} →
+              </ctx.ui.Button>
+            </div>
+          </Show>
+          <div class="mem-note">{t("selectionHint")}</div>
           <Show when={timelinePartial()}>
             <div class="mem-note">
               {t("partial")} ({timelineSource()})
@@ -816,7 +970,13 @@ export function MemoryView() {
           </Show>
           <For each={messages()}>
             {(message) => (
-              <div class="mem-msg">
+              <div
+                class="mem-msg"
+                ref={(element) => {
+                  if (element) messageRefs.set(message.id, element);
+                  else messageRefs.delete(message.id);
+                }}
+              >
                 <div class="mem-msg-head">
                   <span class={`mem-kind mem-kind-${message.kind}`}>{kindLabel(message.kind)}</span>
                   <span class="mem-msg-meta">
@@ -828,24 +988,31 @@ export function MemoryView() {
                     <span class="mem-badge">{t("toolsHidden")}</span>
                   </Show>
                 </div>
-                <div class="mem-msg-text">{message.text}</div>
+                <ctx.ui.Markdown text={message.text} class="mem-msg-text" />
                 <div class="mem-msg-actions">
-                  <ctx.ui.Button
-                    size="small"
-                    variant="ghost"
-                    icon="plus"
-                    busy={attaching() === message.id}
-                    onClick={() =>
-                      void addToContext(
-                        timelineSession()?.id ?? selectedSessionID()!,
-                        message.id,
-                        timelineSession()?.title,
-                        query(),
-                      )
-                    }
-                  >
-                    {t("addToContext")}
-                  </ctx.ui.Button>
+                  {/* Keep the selection alive when the button is pressed. */}
+                  <span onMouseDown={(event) => event.preventDefault()}>
+                    <ctx.ui.Button
+                      size="small"
+                      variant="ghost"
+                      icon="plus"
+                      busy={attaching() === message.id}
+                      onClick={() =>
+                        void addToContext({
+                          sessionID: timelineSession()?.id ?? selectedSessionID()!,
+                          messageID: message.id,
+                          title: timelineSession()?.title,
+                          query: query(),
+                          rawText: message.text,
+                          selection: selectionFor(message.id),
+                          created: message.created,
+                          kind: message.kind,
+                        })
+                      }
+                    >
+                      {selectionFor(message.id) ? t("quoteSelection") : t("addToContext")}
+                    </ctx.ui.Button>
+                  </span>
                 </div>
               </div>
             )}
@@ -867,7 +1034,9 @@ export function MemoryView() {
             !loading() &&
             !loadingMore() &&
             totalCount() > 0 &&
-            (selectedSessionID() ? !timelineHasMore() : !(query().trim() ? hitsHasMore() : sessionsHasMore()))
+            (selectedSessionID()
+              ? !paginated() && !timelineHasMore()
+              : !(query().trim() ? hitsHasMore() : sessionsHasMore()))
           }
         >
           <div class="mem-end">{t("end")}</div>

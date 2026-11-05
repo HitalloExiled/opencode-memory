@@ -32,7 +32,7 @@ import { currentProject, resolveScopeProjectID } from "./scope.js";
 import { searchMemory } from "./search.js";
 import { listAllSummaries, listSummaries } from "../summaries.js";
 import type { Runtime } from "../runtime.js";
-import type { SearchHit } from "../types.js";
+import type { MessageKind, SearchHit } from "../types.js";
 import { timeMs } from "../util.js";
 
 type Ctx = PluginContext;
@@ -121,11 +121,14 @@ export function createRpcHandlers(ctx: Ctx, runtime: Runtime): RpcHandlers<typeo
       const { projectID } = await resolveScopeProjectID(ctx, { sessionID: input.sessionID });
       const limit = clamp(input.limit, 20, 1, 50);
       const offset = clamp(input.offset, 0, 0, 5000);
+      // The panel is a conversation browser: summaries, synthetic and system
+      // messages stay out of the results. An explicit kind still wins.
+      const kinds: MessageKind[] = input.kind && input.kind !== "any" ? [input.kind] : ["user", "assistant"];
       const result = await searchMemory(runtime, {
         projectID,
         scope: input.scope,
         query: input.query,
-        kind: input.kind,
+        kinds,
         limit,
         offset,
         backfill: input.backfill,
@@ -149,13 +152,18 @@ export function createRpcHandlers(ctx: Ctx, runtime: Runtime): RpcHandlers<typeo
       const messages: MessageView[] = [];
       for (const message of read.page.data) {
         const view = messageToView(message);
-        if (view) messages.push({ ...view, kind: view.kind as string });
+        // The conversation view shows only the human and the assistant.
+        if (view && (view.kind === "user" || view.kind === "assistant")) {
+          messages.push({ ...view, kind: view.kind as string });
+        }
       }
       const next = read.page.cursor?.next;
+      const previous = read.page.cursor?.previous;
       return {
         session: toSessionView(current.info),
         messages,
         ...(next ? { nextCursor: next } : {}),
+        ...(previous ? { previousCursor: previous } : {}),
         hasMore: Boolean(next),
         partial: read.partial,
         source: read.source,

@@ -139,6 +139,12 @@ RPC — ela não abre o `index.db` nem o banco do OpenCode. O fluxo:
 - **Resultados por sessão**: cada card mostra título, projeto, data e até 3
   trechos com os termos destacados. Clicar abre a **conversa completa**, que
   carrega páginas de mensagens conforme o scroll chega ao fim.
+- **Conversa**: renderizada como Markdown e limitada a mensagens `user` e
+  `assistant` (resumos, synthetic e system ficam fora da tela). O botão
+  **Paginar** alterna entre scroll infinito e navegação por página
+  (Anterior/Próxima), usando o cursor da timeline.
+- **Seleção**: o texto é selecionável; ao selecionar um trecho dentro de uma
+  mensagem, o botão vira **Quotar seleção** e envia apenas o trecho escolhido.
 - **Adicionar ao contexto**: anexa um quote ao composer da sessão atual. O
   trecho é truncado em N caracteres (seletor 1000/2000/4000) e o cabeçalho
   informa `chars start–end de total`, `offset` e a chamada exata para o agente

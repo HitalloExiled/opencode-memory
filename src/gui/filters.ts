@@ -103,6 +103,8 @@ export interface QuoteInput {
   end: number;
   limit: number;
   query?: string | undefined;
+  /** The text is the user's selection, not a computed window. */
+  selected?: boolean | undefined;
 }
 
 /**
@@ -113,8 +115,9 @@ export interface QuoteInput {
 export function buildQuote(input: QuoteInput): string {
   const title = input.title?.trim() || input.sessionID;
   const occurrence = input.query?.trim() ? ` · ocorrência de "${input.query.trim()}"` : "";
+  const selected = input.selected ? " (trecho selecionado)" : "";
   const header = [
-    `[memória] ${title} · sessão ${input.sessionID} · mensagem ${input.messageID} · ${input.kind} · ${isoDate(input.created)}${occurrence}`,
+    `[memória] ${title} · sessão ${input.sessionID} · mensagem ${input.messageID} · ${input.kind} · ${isoDate(input.created)}${occurrence}${selected}`,
     `Trecho: ${formatCharsRange(input.start, input.end, input.total)} (offset ${input.offset}, tamanho ${input.length}; truncado em ${input.limit}).`,
     `Para consultar em torno da ocorrência: memory.history action="content" sessionID="${input.sessionID}" messageID="${input.messageID}" offset=${input.start} limit=${input.limit} scope="all"`,
   ];

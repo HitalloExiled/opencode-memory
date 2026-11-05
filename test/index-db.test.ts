@@ -68,6 +68,28 @@ describe("SqliteIndex", () => {
     expect(await searchAll(index, "hello", "any")).toEqual([]);
     await index.close();
   });
+
+  test("filters a conversation to user + assistant kinds", async () => {
+    const index = await openIndex();
+    await index.clearAll();
+    await index.upsert(docs);
+
+    const hits = await index.search("text", {
+      scope: "all",
+      kinds: ["user", "assistant"],
+      limit: 10,
+    });
+    expect(ids(hits)).toEqual(["m1"]);
+
+    const summaries = await index.search("text", {
+      scope: "all",
+      kinds: ["summary"],
+      limit: 10,
+    });
+    expect(ids(summaries)).toEqual(["m3"]);
+
+    await index.close();
+  });
 });
 
 describe("JsonIndex", () => {

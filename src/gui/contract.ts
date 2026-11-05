@@ -80,6 +80,7 @@ export type TimelineResult = {
   session: SessionView;
   messages: MessageView[];
   nextCursor?: string | undefined;
+  previousCursor?: string | undefined;
   hasMore: boolean;
   partial: boolean;
   source: string;
@@ -224,6 +225,7 @@ export const timelineResultSchema = Schema.Struct({
   session: sessionViewSchema,
   messages: Schema.Array(messageViewSchema),
   nextCursor: optString,
+  previousCursor: optString,
   hasMore: Schema.Boolean,
   partial: Schema.Boolean,
   source: Schema.String,

@@ -19,6 +19,8 @@ export interface SearchMemoryOptions {
   scope: "project" | "all";
   query: string;
   kind?: MessageKind | "any" | undefined;
+  /** Restrict to several kinds (the GUI uses user + assistant). */
+  kinds?: MessageKind[] | undefined;
   /** Page size (the GUI uses 20; the tool caps at 50). */
   limit: number;
   /** Number of ranked hits to skip. */
@@ -58,10 +60,12 @@ export async function searchMemory(runtime: Runtime, options: SearchMemoryOption
   }
 
   const terms = tokenize(options.query);
+  const kindSet = options.kinds && options.kinds.length > 0 ? new Set(options.kinds) : undefined;
   const ftsHits = await runtime.index.search(options.query, {
     projectID: options.projectID,
     scope: options.scope,
     kind,
+    kinds: options.kinds,
     limit: window * 3,
   });
 
@@ -79,7 +83,7 @@ export async function searchMemory(runtime: Runtime, options: SearchMemoryOption
           options.scope === "project" ? options.projectID : undefined,
         );
         for (const [id, entry] of vectors) {
-          if (kind !== "any" && entry.kind !== kind) continue;
+          if (kindSet ? !kindSet.has(entry.kind) : kind !== "any" && entry.kind !== kind) continue;
           let best = -Infinity;
           for (const vec of entry.vecs) {
             const score = cosine(qvec, vec);

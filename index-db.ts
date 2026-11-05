@@ -15,7 +15,15 @@ export interface SearchOptions {
   projectID?: string;
   scope: "project" | "all";
   kind?: MessageKind | "any";
+  /** Restrict to several kinds (e.g. conversation = user + assistant). */
+  kinds?: MessageKind[];
   limit: number;
+}
+
+function kindsOf(options: SearchOptions): MessageKind[] | undefined {
+  if (options.kinds && options.kinds.length > 0) return options.kinds;
+  if (options.kind && options.kind !== "any") return [options.kind];
+  return undefined;
 }
 
 export interface MemoryIndex {
@@ -203,9 +211,10 @@ class SqliteIndex implements MemoryIndex {
       clauses.push("project_id = ?");
       params.push(options.projectID);
     }
-    if (options.kind && options.kind !== "any") {
-      clauses.push("kind = ?");
-      params.push(options.kind);
+    const kinds = kindsOf(options);
+    if (kinds) {
+      clauses.push(`kind IN (${kinds.map(() => "?").join(", ")})`);
+      params.push(...kinds);
     }
     const sql =
       "SELECT id, project_id, session_id, message_id, kind, created, title, agent, model, text FROM documents" +
@@ -228,9 +237,10 @@ class SqliteIndex implements MemoryIndex {
       clauses.push("d.project_id = ?");
       params.push(options.projectID);
     }
-    if (options.kind && options.kind !== "any") {
-      clauses.push("d.kind = ?");
-      params.push(options.kind);
+    const kinds = kindsOf(options);
+    if (kinds) {
+      clauses.push(`d.kind IN (${kinds.map(() => "?").join(", ")})`);
+      params.push(...kinds);
     }
     params.push(Math.max(1, options.limit));
     try {
@@ -501,9 +511,10 @@ export class JsonIndex implements MemoryIndex {
     const terms = tokenize(query);
     if (terms.length === 0) return [];
     const hits: SearchHit[] = [];
+    const kinds = kindsOf(options);
     for (const doc of this.documents.values()) {
       if (options.scope === "project" && doc.projectID !== options.projectID) continue;
-      if (options.kind && options.kind !== "any" && doc.kind !== options.kind) continue;
+      if (kinds && !kinds.includes(doc.kind)) continue;
       const haystack = `${doc.title ?? ""}\n${doc.text}`.toLocaleLowerCase();
       let score = 0;
       for (const term of terms) {
