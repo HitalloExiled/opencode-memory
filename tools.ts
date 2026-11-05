@@ -76,8 +76,8 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
     editor.add({
       name: "search",
       description: [
-        "Search past conversations and compaction summaries across sessions of this project.",
         "Use BEFORE rediscovering what a past session may already have found: machine facts (paths, binaries, versions, quirks), decisions and their rationale, what was said or done. Also the source for 'when did X happen' and 'what did we decide about X'.",
+        "Searches past conversations and compaction summaries across sessions of this project.",
         "The index holds only user text, assistant text and compaction summaries (never reasoning or tool payloads).",
         "Search is hybrid: keyword (FTS5) plus local CPU semantic search, fused via RRF; hits are tagged via: fts|vec|fts+vec.",
         "Actions: search (default), stats, reindex, index-all, embed.",
@@ -241,7 +241,9 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
             `\n\nRead more with memory.summaries (summaries) or memory.history (full messages).${partialNote}${vectorNote}`,
         };
       },
-      options: { namespace: "memory" },
+      // Kept in the Code Mode catalog regardless of the per-namespace budget:
+      // this is the entry point for recall, so it must never be a `search()` away.
+      options: { namespace: "memory", pinned: true },
     });
 
     editor.add({
