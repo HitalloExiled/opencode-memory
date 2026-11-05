@@ -36,6 +36,11 @@ const CSS = `
   font-family: var(--font-family-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
   font-size: 12.5px;
 }
+.mem::selection,
+.mem ::selection {
+  background-color: var(--timeline-quote-background, rgba(79, 140, 255, .25));
+  color: currentColor;
+}
 .mem-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .mem-title { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; }
 .mem-sub { color: var(--v2-text-text-muted); font-size: 11px; margin-top: 1px; }
@@ -638,7 +643,7 @@ export function MemoryView() {
     }
   };
 
-  const quoteToolbarSelection = (toolbar: QuoteToolbar, withoutComment: boolean) => {
+  const quoteToolbarSelection = (toolbar: QuoteToolbar) => {
     const message = messages().find((entry) => entry.id === toolbar.messageID);
     const sessionID = timelineSession()?.id ?? selectedSessionID();
     if (!sessionID) return;
@@ -654,9 +659,8 @@ export function MemoryView() {
       created: message?.created,
       kind: message?.kind,
     }).then((commentID) => {
-      // Same behavior as the native toolbar: "Quote" opens the quote's
-      // comment editor; "Quote without comment" just attaches it.
-      if (!withoutComment && commentID) ctx.screen.current()?.composer.focus(commentID);
+      // Same behavior as the native "Quote": attach and open its comment editor.
+      if (commentID) ctx.screen.current()?.composer.focus(commentID);
     });
   };
 
@@ -701,7 +705,7 @@ export function MemoryView() {
           messageID,
           text,
           top: Math.min(window.innerHeight - 52, rect.bottom + 6),
-          left: Math.min(window.innerWidth - 280, Math.max(8, rect.left)),
+          left: Math.min(window.innerWidth - 160, Math.max(8, rect.left)),
         });
         return;
       }
@@ -1113,15 +1117,7 @@ export function MemoryView() {
                 size="small"
                 variant="ghost"
                 icon="outline-quote"
-                onClick={() => quoteToolbarSelection(toolbar(), true)}
-              >
-                {t("quoteWithoutComment")}
-              </ctx.ui.Button>
-              <ctx.ui.Button
-                size="small"
-                variant="ghost"
-                icon="outline-quote"
-                onClick={() => quoteToolbarSelection(toolbar(), false)}
+                onClick={() => quoteToolbarSelection(toolbar())}
               >
                 {t("quote")}
               </ctx.ui.Button>
