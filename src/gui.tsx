@@ -8,9 +8,12 @@
 
 import { Plugin } from "@opencode/plugin/gui";
 import { setup } from "./gui/setup";
+import { viewStore } from "./gui/state";
 
 const definition = Plugin.define({
-  stores: {},
+  stores: {
+    view: viewStore,
+  },
   setup,
 });
 

@@ -10,7 +10,8 @@
 
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { usePlugin } from "@opencode/plugin/gui";
+import { usePlugin, type MountedSession, type Persisted } from "@opencode/plugin/gui";
+import type { ViewEntry, ViewState } from "./state";
 import {
   MemoryRpc,
   QUOTE_CHARS_DEFAULT,
@@ -191,7 +192,7 @@ const CSS = `
 
 type RpcSession = NonNullable<ReturnType<ReturnType<typeof usePlugin>["sessions"]["current"]>>;
 
-export function MemoryView() {
+export function MemoryView(props: { session: MountedSession; store: Persisted<ViewState> }) {
   const ctx = usePlugin();
   const t = useT();
 
@@ -204,6 +205,7 @@ export function MemoryView() {
   const [loading, setLoading] = createSignal(false);
   const [loadingMore, setLoadingMore] = createSignal(false);
   const [refreshKey, setRefreshKey] = createSignal(0);
+  const [hydratedSession, setHydratedSession] = createSignal("");
 
   // Search results (query non-empty).
   const [hits, setHits] = createSignal<HitView[]>([]);
@@ -235,10 +237,12 @@ export function MemoryView() {
   const [quoteToolbar, setQuoteToolbar] = createSignal<QuoteToolbar | null>(null);
   let attachSeq = 0;
 
-  const currentSession = (): RpcSession | undefined => ctx.sessions.current();
+  const currentSession = (): RpcSession => props.session;
   const terms = createMemo(() => termsOf(query()));
   const groups = createMemo(() => groupHitsBySession(hits()));
 
+  let restoredFor = "";
+  let restoreSelected = false;
   let listGen = 0;
   let timelineGen = 0;
   let listController: AbortController | undefined;
@@ -736,14 +740,68 @@ export function MemoryView() {
     });
   });
 
+  // Hydrate this panel from the session's stored view. Runs before the
+  // reload effect, so a restored conversation is not closed on mount.
+  createEffect(() => {
+    const id = props.session.id;
+    if (restoredFor === id) return;
+    restoredFor = id;
+    const saved = props.store.value?.sessions[id];
+    restoreSelected = Boolean(saved?.selected);
+    setQuery(saved?.query ?? "");
+    setProjectOnly(saved?.projectOnly ?? true);
+    setQuoteChars(saved?.quoteChars ?? QUOTE_CHARS_DEFAULT);
+    setPaginated(saved?.paginated ?? false);
+    setSelectedSessionID(saved?.selected?.id ?? null);
+    setTimelineSession(saved?.selected ?? null);
+    setMessages([]);
+    setNextCursor(undefined);
+    setPreviousCursor(undefined);
+    setTimelineHasMore(false);
+    setTimelinePartial(false);
+    setTimelineSource("");
+    setPageIndex(1);
+    messageRefs.clear();
+    setQuoteToolbar(null);
+    setHydratedSession(id);
+  });
+
   // Reload when the routed session, scope, query or refresh key changes.
   createEffect(() => {
     query();
     projectOnly();
-    currentSession()?.id;
+    props.session.id;
     refreshKey();
-    const timer = setTimeout(() => void reload(), 200);
+    if (hydratedSession() !== props.session.id) return;
+    const restore = restoreSelected;
+    const timer = setTimeout(() => {
+      if (restore) {
+        restoreSelected = false;
+        setPageIndex(1);
+        setPreviousCursor(undefined);
+        setQuoteToolbar(null);
+        void loadTimeline(undefined, true);
+      } else {
+        void reload();
+      }
+    }, 200);
     onCleanup(() => clearTimeout(timer));
+  });
+
+  // Persist the panel state for this routed session.
+  createEffect(() => {
+    const id = props.session.id;
+    if (restoredFor !== id) return;
+    const entry: ViewEntry = {
+      query: query(),
+      projectOnly: projectOnly(),
+      quoteChars: quoteChars(),
+      paginated: paginated(),
+      ...(timelineSession() ? { selected: timelineSession()! } : {}),
+    };
+    props.store.update((draft) => {
+      draft.sessions[id] = entry;
+    });
   });
 
   // Infinite scroll: one sentinel at the bottom of the scroll container.
@@ -796,6 +854,17 @@ export function MemoryView() {
     onCleanup(() => cancelAnimationFrame(frame));
   });
 
+  const refresh = () => {
+    if (selectedSessionID()) {
+      setPageIndex(1);
+      setPreviousCursor(undefined);
+      setQuoteToolbar(null);
+      void loadTimeline(undefined, true);
+    } else {
+      setRefreshKey((value) => value + 1);
+    }
+  };
+
   const totalCount = createMemo(() => (query().trim() ? groups().length : sessions().length));
 
   return (
@@ -815,49 +884,51 @@ export function MemoryView() {
           <ctx.ui.IconButton
             icon="outline-rotate-clockwise"
             label={t("refresh")}
-            onClick={() => setRefreshKey((value) => value + 1)}
+            onClick={refresh}
           />
         </div>
       </div>
 
-      <div class="mem-controls">
-        <ctx.ui.TextInput
-          type="search"
-          label={t("searchLabel")}
-          placeholder={t("searchPlaceholder")}
-          value={query()}
-          onInput={setQuery}
-        />
-        <div class="mem-row">
-          <button
-            type="button"
-            class="mem-toggle"
-            classList={{ "is-active": projectOnly() }}
-            title={t("projectOnlyHint")}
-            onClick={() => setProjectOnly((value) => !value)}
-          >
-            {t("projectOnly")}
-          </button>
-          <select
-            class="mem-select"
-            title={t("quoteCharsHint")}
-            value={String(quoteChars())}
-            onChange={(event) => setQuoteChars(Number(event.currentTarget.value))}
-          >
-            <For each={QUOTE_CHARS_OPTIONS}>
-              {(size) => <option value={String(size)}>{t("quoteChars")}: {size}</option>}
-            </For>
-          </select>
+      <Show when={!selectedSessionID()}>
+        <div class="mem-controls">
+          <ctx.ui.TextInput
+            type="search"
+            label={t("searchLabel")}
+            placeholder={t("searchPlaceholder")}
+            value={query()}
+            onInput={setQuery}
+          />
+          <div class="mem-row">
+            <button
+              type="button"
+              class="mem-toggle"
+              classList={{ "is-active": projectOnly() }}
+              title={t("projectOnlyHint")}
+              onClick={() => setProjectOnly((value) => !value)}
+            >
+              {t("projectOnly")}
+            </button>
+            <select
+              class="mem-select"
+              title={t("quoteCharsHint")}
+              value={String(quoteChars())}
+              onChange={(event) => setQuoteChars(Number(event.currentTarget.value))}
+            >
+              <For each={QUOTE_CHARS_OPTIONS}>
+                {(size) => <option value={String(size)}>{t("quoteChars")}: {size}</option>}
+              </For>
+            </select>
+          </div>
+          <Show when={status()}>
+            {(value) => (
+              <div class="mem-status">
+                {t("indexStatus", value().documents, value().summaries)} · {t("backend", value().backend)}
+                {value().error ? ` · ${value().error}` : ""}
+              </div>
+            )}
+          </Show>
         </div>
-        <Show when={status()}>
-          {(value) => (
-            <div class="mem-status">
-              {t("indexStatus", value().documents, value().summaries)} · {t("backend", value().backend)}
-              {value().error ? ` · ${value().error}` : ""}
-            </div>
-          )}
-        </Show>
-      </div>
+      </Show>
 
       <Show when={error()}>
         <div class="mem-error">{error()}</div>

@@ -13,11 +13,14 @@ import type {
   SetupContext,
 } from "@opencode/plugin/gui";
 import { Command, MenuItem, Panel } from "@opencode/plugin/gui";
+import type { MemoryStores } from "./state";
 import { MemoryView } from "./view";
 
 export const openMemoryId = "memory";
 
-export function setup(ctx: SetupContext<never>): void {
+type MemoryDeclarations = { stores: MemoryStores };
+
+export function setup(ctx: SetupContext<MemoryDeclarations>): void {
   const text = (pt: string, en: string): string =>
     (ctx.locale.locale() ?? "").toLowerCase().startsWith("pt") ? pt : en;
 
@@ -31,7 +34,7 @@ export function setup(ctx: SetupContext<never>): void {
     id: openMemoryId,
     region: "side",
     list: () => [memoryTab()],
-    render: () => <MemoryView />,
+    render: (props) => <MemoryView session={props.session} store={ctx.stores.view} />,
   };
   ctx.add(Panel, () => memoryPanel);
 
