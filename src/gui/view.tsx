@@ -177,15 +177,16 @@ const CSS = `
 .mem-msg-actions { display: flex; justify-content: flex-end; }
 .mem-sentinel { height: 1px; flex: 0 0 auto; }
 .mem-end { color: var(--v2-text-text-faint); font-size: 10px; text-align: center; padding: 4px 0 8px; }
-.mem-jumps {
+.mem-body { position: relative; display: flex; flex: 1; min-height: 0; }
+.mem-jump-top,
+.mem-jump-bottom {
   position: absolute;
-  right: 14px;
-  bottom: 14px;
+  left: 50%;
   z-index: 10;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  transform: translateX(-50%);
 }
+.mem-jump-top { top: 12px; }
+.mem-jump-bottom { bottom: 12px; }
 .mem-jump { box-shadow: var(--v2-elevation-raised, 0 4px 16px rgba(0, 0, 0, .2)); }
 .mem-quote-toolbar {
   position: fixed;
@@ -830,13 +831,13 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
   };
 
   const scrollToTop = () => {
-    scrollRef?.scrollTo({ top: 0, behavior: "smooth" });
+    scrollRef?.scrollTo({ top: 0 });
   };
 
   const scrollToBottom = () => {
     const element = scrollRef;
     if (!element) return;
-    element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
+    element.scrollTo({ top: element.scrollHeight });
     if (!paginated() && timelineHasMore()) void loadMoreTimeline();
   };
   onMount(() => {
@@ -980,7 +981,8 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
         <div class="mem-error">{error()}</div>
       </Show>
 
-      <div class="mem-scroll" ref={(element) => (scrollRef = element)} onScroll={updateJumps}>
+      <div class="mem-body">
+        <div class="mem-scroll" ref={(element) => (scrollRef = element)} onScroll={updateJumps}>
         <Show when={!selectedSessionID()}>
           <Show when={loading() && hits().length === 0 && sessions().length === 0}>
             <div class="mem-loading">
@@ -1218,32 +1220,29 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
           <div class="mem-end">{t("end")}</div>
         </Show>
         <div class="mem-sentinel" ref={(element) => (sentinel = element)} />
-      </div>
-
-      <Show when={selectedSessionID() && (showTop() || showBottom())}>
-        <div class="mem-jumps">
-          <Show when={showTop()}>
-            <ctx.ui.IconButton
-              icon="arrow-up"
-              label={t("scrollTop")}
-              variant="neutral"
-              size="small"
-              class="mem-jump"
-              onClick={scrollToTop}
-            />
-          </Show>
-          <Show when={showBottom()}>
-            <ctx.ui.IconButton
-              icon="arrow-down-to-line"
-              label={t("scrollBottom")}
-              variant="neutral"
-              size="small"
-              class="mem-jump"
-              onClick={scrollToBottom}
-            />
-          </Show>
         </div>
-      </Show>
+
+        <Show when={selectedSessionID() && showTop()}>
+          <ctx.ui.IconButton
+            icon="arrow-up"
+            label={t("scrollTop")}
+            variant="neutral"
+            size="small"
+            class="mem-jump mem-jump-top"
+            onClick={scrollToTop}
+          />
+        </Show>
+        <Show when={selectedSessionID() && showBottom()}>
+          <ctx.ui.IconButton
+            icon="arrow-down-to-line"
+            label={t("scrollBottom")}
+            variant="neutral"
+            size="small"
+            class="mem-jump mem-jump-bottom"
+            onClick={scrollToBottom}
+          />
+        </Show>
+      </div>
 
       <Show when={quoteToolbar()}>
         {(toolbar) => (
