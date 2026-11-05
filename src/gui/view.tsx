@@ -686,6 +686,7 @@ export function MemoryView() {
   // floating Quote action, like the session timeline does.
   createEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let frame: number | undefined;
     const close = () => setQuoteToolbar(null);
     const read = () => {
       const selection = window.getSelection();
@@ -712,12 +713,19 @@ export function MemoryView() {
       if (!selection || selection.isCollapsed) return close();
       timer = setTimeout(read, 120);
     };
-    const onViewportChange = () => close();
+    const onViewportChange = () => {
+      if (frame !== undefined) return;
+      frame = requestAnimationFrame(() => {
+        frame = undefined;
+        read();
+      });
+    };
     document.addEventListener("selectionchange", onSelectionChange);
     document.addEventListener("scroll", onViewportChange, true);
     window.addEventListener("resize", onViewportChange);
     onCleanup(() => {
       clearTimeout(timer);
+      if (frame !== undefined) cancelAnimationFrame(frame);
       document.removeEventListener("selectionchange", onSelectionChange);
       document.removeEventListener("scroll", onViewportChange, true);
       window.removeEventListener("resize", onViewportChange);
