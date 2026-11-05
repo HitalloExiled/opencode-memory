@@ -187,7 +187,14 @@ const CSS = `
 }
 .mem-jump-top { top: 12px; }
 .mem-jump-bottom { bottom: 12px; }
-.mem-jump { box-shadow: var(--v2-elevation-raised, 0 4px 16px rgba(0, 0, 0, .2)); }
+.mem-body .mem-jump[data-component="icon-button-v2"] {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--v2-border-border-muted);
+  background-color: var(--v2-background-bg-layer-01);
+  box-shadow: var(--v2-elevation-raised, 0 4px 16px rgba(0, 0, 0, .2));
+}
 .mem-quote-toolbar {
   position: fixed;
   z-index: 50;
@@ -1208,7 +1215,7 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
             icon="arrow-up"
             label={t("scrollTop")}
             variant="neutral"
-            size="small"
+            size="normal"
             class="mem-jump mem-jump-top"
             onClick={scrollToTop}
           />
@@ -1218,7 +1225,7 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
             icon="arrow-down-to-line"
             label={t("scrollBottom")}
             variant="neutral"
-            size="small"
+            size="normal"
             class="mem-jump mem-jump-bottom"
             onClick={scrollToBottom}
           />
