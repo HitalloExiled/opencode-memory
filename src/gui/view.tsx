@@ -38,7 +38,7 @@ const CSS = `
 }
 .mem::selection,
 .mem ::selection {
-  background-color: var(--timeline-quote-background, rgba(79, 140, 255, .25));
+  background-color: var(--timeline-quote-background, light-dark(rgb(from var(--v2-blue-1100) r g b / 0.1), rgb(from var(--v2-blue-400) r g b / 0.25)));
   color: currentColor;
 }
 .mem-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
