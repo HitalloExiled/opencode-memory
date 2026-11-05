@@ -48,6 +48,10 @@ const CSS = `
 .mem-sub { color: var(--v2-text-text-muted); font-size: 11px; margin-top: 1px; }
 .mem-actions { display: flex; align-items: center; gap: 4px; }
 .mem-controls { display: flex; flex-direction: column; gap: 6px; }
+.mem-search { position: relative; display: flex; }
+.mem-search > [data-component="text-input-v2"] { width: 100%; }
+.mem-search [data-slot="text-input-v2-input"] { padding-inline-end: 30px; }
+.mem-search-clear { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); }
 .mem-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .mem-toggle {
   border: 0;
@@ -911,13 +915,27 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
 
       <Show when={!selectedSessionID()}>
         <div class="mem-controls">
-          <ctx.ui.TextInput
-            type="search"
-            label={t("searchLabel")}
-            placeholder={t("searchPlaceholder")}
-            value={query()}
-            onInput={setQuery}
-          />
+          <div class="mem-search">
+            <ctx.ui.TextInput
+              type="search"
+              label={t("searchLabel")}
+              placeholder={t("searchPlaceholder")}
+              value={query()}
+              onInput={setQuery}
+            />
+            <Show when={query().length > 0}>
+              <span onMouseDown={(event) => event.preventDefault()}>
+                <ctx.ui.IconButton
+                  icon="outline-xmark"
+                  label={t("clearSearch")}
+                  variant="ghost-muted"
+                  size="small"
+                  class="mem-search-clear"
+                  onClick={() => setQuery("")}
+                />
+              </span>
+            </Show>
+          </div>
           <div class="mem-row">
             <button
               type="button"
