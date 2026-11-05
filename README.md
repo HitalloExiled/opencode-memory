@@ -64,6 +64,13 @@ O plugin é carregado como pacote local em `~/.config/opencode/plugins/memory`.
    desde a última vez. `scope=all` busca o que já está indexado + todos os
    resumos em disco; para indexar todos os projetos manualmente, use
    `action=index-all` (ou `/index-all`).
+4. **Oferece um painel lateral (GUI).** A aba **Memória** busca conversas
+   passadas, agrupa os resultados por sessão e abre a conversa completa com
+   scroll infinito. Um toggle restringe a busca ao projeto da sessão atual;
+   desligado, busca em todos os projetos. Cada mensagem tem **Adicionar ao
+   contexto**, que anexa ao próximo prompt um trecho truncado (padrão 2000
+   caracteres) com o tamanho total e o offset do trecho, para o agente ler o
+   entorno via `memory.history action="content"`.
 
    Resumos acompanham a sessão: quando uma sessão muda de projeto, os resumos
    dela são movidos do bucket antigo para o novo (consolidação lazy, no
@@ -119,7 +126,38 @@ indicando a camada que o achou: `fts` (só palavras-chave), `vec`
 |---|---|
 | `memory.summaries` | listar/buscar/ler resumos de compactação (`detail=brief\|full\|sections`) + estado do repo (`action=repo`) |
 | `memory.search` | busca híbrida (FTS5 + semântica local, fundida por RRF; cada hit tagueado `via: fts\|vec\|fts+vec` **e com atribuição** `by: <agente> (<modelo>)` / `by: user`) no índice derivado (resumos + texto de usuário/assistente); `scope=project\|all`; `action=index-all` indexa todos os projetos manualmente (`rebuild=true` para rebuild completo); `action=embed` (re)constrói os vetores do escopo |
-| `memory.history` | inspecionar a timeline completa de uma sessão (listar sessões, ler página, buscar, buscar uma mensagem; mensagens de assistente mostram `agent:` e `model:`); tool calls e reasoning só entram com `includeTools`/`includeReasoning` explícitos; sessões de outro projeto exigem `scope=all` |
+| `memory.history` | inspecionar a timeline completa de uma sessão (listar sessões, ler página, buscar, buscar uma mensagem, ler um trecho com `action=content` e `offset`/`limit`; mensagens de assistente mostram `agent:` e `model:`); tool calls e reasoning só entram com `includeTools`/`includeReasoning` explícitos; sessões de outro projeto exigem `scope=all` |
+
+## GUI (painel Memória)
+
+A aba lateral **Memória** (`./gui-experimental`) fala com o plugin servidor por
+RPC — ela não abre o `index.db` nem o banco do OpenCode. O fluxo:
+
+- **Busca** híbrida no índice, com debounce.
+- **Só este projeto** (toggle): ligado usa o projeto da sessão roteada;
+  desligado usa `scope=all`.
+- **Resultados por sessão**: cada card mostra título, projeto, data e até 3
+  trechos com os termos destacados. Clicar abre a **conversa completa**, que
+  carrega páginas de mensagens conforme o scroll chega ao fim.
+- **Adicionar ao contexto**: anexa um quote ao composer da sessão atual. O
+  trecho é truncado em N caracteres (seletor 1000/2000/4000) e o cabeçalho
+  informa `chars start–end de total`, `offset` e a chamada exata para o agente
+  continuar a leitura:
+
+  ```
+  memory.history action="content" sessionID="..." messageID="..." offset=... limit=... scope="all"
+  ```
+
+  `action=content` devolve a janela pedida, o total e os offsets
+  `previous`/`next`, então o agente consegue navegar em torno da ocorrência sem
+  despejar a mensagem inteira no contexto.
+
+Build da GUI:
+
+```bash
+npm run typecheck:gui
+npm run gui:build      # dist/gui-experimental.cjs
+```
 
 ## Comandos
 
@@ -160,9 +198,11 @@ Para desativar sem remover nada, apague o link
 ## Desenvolvimento
 
 ```bash
-npm install
-npm run typecheck     # tsc --noEmit
-npm test              # bun test test/
+npm install --legacy-peer-deps
+npm run typecheck       # tsc --noEmit (tools + RPC)
+npm run typecheck:gui   # tsc -p tsconfig.gui.json (Solid JSX)
+npm run gui:build       # vite build -> dist/gui-experimental.cjs
+npm test                # bun test test/
 ```
 
 Os testes rodam com a engine de embedding desligada (nenhum download de pesos

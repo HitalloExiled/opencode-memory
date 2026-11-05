@@ -2,11 +2,12 @@
 
 import type { PluginContext } from "./context.js";
 import type { Runtime } from "./runtime.js";
-import type { MessageKind, SearchHit } from "./types.js";
-import { cosine, embedDocs, getEngine, rrfFuse } from "./embed.js";
+import type { MessageKind } from "./types.js";
+import { embedDocs, getEngine } from "./embed.js";
 import { embedDisabled, embedModelName } from "./paths.js";
-import { backfillProject, indexAllProjects, reindexProject, indexSummaryFiles } from "./indexer.js";
-import { resolveProjectID } from "./projects.js";
+import { indexAllProjects, reindexProject } from "./indexer.js";
+import { currentProject } from "./src/scope.js";
+import { searchMemory } from "./src/search.js";
 import { repoSnapshot } from "./repo.js";
 import {
   findSummary,
@@ -25,13 +26,13 @@ import {
   formatSessionList,
   formatTimeline,
   getHistoryApi,
-  getSessionInfo,
   listSessions,
+  readMessageContent,
   readPage,
   searchSession,
 } from "./history.js";
 import type { HistoryPage, HistorySearchHit, HistorySource } from "./history.js";
-import { fmtDate, normalizeWhitespace, snippet, tokenize } from "./util.js";
+import { fmtDate, normalizeWhitespace } from "./util.js";
 
 function str(input: Record<string, unknown>, key: string): string | undefined {
   const value = input[key];
@@ -57,14 +58,6 @@ function strings(input: Record<string, unknown>, key: string): string[] {
 
 function record(input: unknown): Record<string, unknown> {
   return typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
-}
-
-async function currentProject(ctx: PluginContext, sessionID: string) {
-  const info = await getSessionInfo(ctx, sessionID);
-  // Sessions inside a real project's directory can carry the root project
-  // id "global"; resolve them to the project their directory belongs to.
-  const projectID = (await resolveProjectID(info)) || info.projectID;
-  return { info, projectID, directory: info.location?.directory };
 }
 
 export async function registerTools(ctx: PluginContext, runtime: Runtime) {
@@ -204,69 +197,19 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
         const kind = (str(input, "kind") ?? "any") as MessageKind | "any";
         const limit = num(input, "limit", 20, 1, 50);
 
-        let partialNote = "";
-        if (scope === "all") {
-          await indexSummaryFiles(runtime).catch(() => 0);
-          await backfillProject(runtime, projectID).catch(() => undefined);
-        } else {
-          const result = await backfillProject(runtime, projectID).catch(() => undefined);
-          if (result?.partial) {
-            partialNote = "\n\n> Partial index: some sessions could only be read from the active context.";
-          }
-        }
-
-        const terms = tokenize(query);
-        const ftsHits = await runtime.index.search(query, { projectID, scope, kind, limit: limit * 3 });
-
-        let vecHits: Array<{ id: string; score: number }> = [];
-        let vectorNote = "";
-        if (!embedDisabled()) {
-          const engine = await getEngine();
-          if (!engine) {
-            vectorNote = "\n\n> Vector layer unavailable; results are keyword-only.";
-          } else {
-            try {
-              const qvec = await engine.embedText(engine.spec.queryPrefix + query);
-              const vectors = await runtime.index.loadVectors(engine.model, scope === "project" ? projectID : undefined);
-              for (const [id, entry] of vectors) {
-                if (kind !== "any" && entry.kind !== kind) continue;
-                let best = -Infinity;
-                for (const vec of entry.vecs) {
-                  const score = cosine(qvec, vec);
-                  if (score > best) best = score;
-                }
-                if (best > -Infinity) vecHits.push({ id, score: best });
-              }
-              vecHits.sort((a, b) => b.score - a.score);
-              vecHits = vecHits.slice(0, limit * 3);
-            } catch (error) {
-              vectorNote = `\n\n> Vector layer failed (${error instanceof Error ? error.message : String(error)}); results are keyword-only.`;
-            }
-          }
-        }
-
-        let hits: SearchHit[];
-        if (vecHits.length === 0) {
-          hits = ftsHits.map((hit) => ({ ...hit, via: "fts" as const }));
-        } else {
-          const fused = rrfFuse(ftsHits.map((hit) => hit.id), vecHits.map((hit) => hit.id), limit);
-          const byFts = new Map(ftsHits.map((hit) => [hit.id, hit]));
-          const missing = fused.filter((f) => !byFts.has(f.id)).map((f) => f.id);
-          const extras = missing.length > 0 ? await runtime.index.docsByIds(missing) : [];
-          const byDoc = new Map(extras.map((doc) => [doc.id, doc]));
-          hits = fused
-            .map((f): SearchHit | undefined => {
-              const doc = byFts.get(f.id) ?? byDoc.get(f.id);
-              if (!doc) return undefined;
-              return {
-                ...doc,
-                rank: byFts.get(f.id)?.rank ?? 0,
-                snippet: snippet(doc.text, terms),
-                via: f.via,
-              };
-            })
-            .filter((hit): hit is SearchHit => hit !== undefined);
-        }
+        const result = await searchMemory(runtime, {
+          projectID,
+          scope,
+          query,
+          kind,
+          limit,
+          offset: 0,
+        });
+        const hits = result.hits;
+        const partialNote = result.partial
+          ? "\n\n> Partial index: some sessions could only be read from the active context."
+          : "";
+        const vectorNote = result.vectorNote ? `\n\n${result.vectorNote}` : "";
 
         if (hits.length === 0) {
           return {
@@ -380,23 +323,36 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
     editor.add({
       name: "history",
       description: [
-        "Inspect the full message timeline of a session: list sessions, read a page, search inside it, or fetch one message.",
+        "Inspect the full message timeline of a session: list sessions, read a page, search inside it, fetch one message, or read a bounded slice of a message.",
         "Use for 'what happened in session X' and 'when did X occur' — it is the authoritative source for when things happened.",
         "action=search returns only a window around the occurrences (context=window width, windows=clusters per message), never the full message — prefer it over action=read to inspect a long conversation.",
+        "action=content returns a bounded character window of one message and reports offset/total, so a truncated quote injected from the Memory panel can be expanded around its occurrence (pass offset/limit).",
         "Tool calls and reasoning are excluded unless includeTools/includeReasoning is set.",
       ].join(" "),
       input: {
         type: "object",
         properties: {
-          action: { type: "string", enum: ["sessions", "read", "search", "message"], description: "Defaults to sessions." },
+          action: {
+            type: "string",
+            enum: ["sessions", "read", "search", "message", "content"],
+            description: "Defaults to sessions.",
+          },
           sessionID: { type: "string", description: "Target session. Defaults to the current session." },
           query: {
             type: "string",
             description:
-              "Words to look for (action=search). For action=sessions it filters by title, session directory or project path/name.",
+              "Words to look for (action=search; action=content centers the window on the first occurrence). For action=sessions it filters by title, session directory or project path/name.",
           },
-          messageID: { type: "string", description: "Message to fetch for action=message." },
-          limit: { type: "number", description: "Maximum items (1-100; 40 for read, 20 otherwise)." },
+          messageID: { type: "string", description: "Message to fetch for action=message or action=content." },
+          limit: {
+            type: "number",
+            description:
+              "Maximum items (1-100; 40 for read, 20 otherwise) or window size in characters for action=content (1-8000, default 2000).",
+          },
+          offset: {
+            type: "number",
+            description: "Character offset for action=content. Omit to center on the first query occurrence.",
+          },
           cursor: { type: "string", description: "Pagination cursor returned by a previous read." },
           order: { type: "string", enum: ["asc", "desc"], description: "Page direction for action=read. Defaults to desc." },
           includeTools: { type: "boolean", description: "Include tool calls and results. Off by default." },
@@ -413,7 +369,7 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
             type: "string",
             enum: ["project", "all"],
             description:
-              "Scope for sessions (listing) and for read/search/message (target session). Defaults to project. " +
+              "Scope for sessions (listing) and for read/search/message/content (target session). Defaults to project. " +
               "Pass scope=all to read or search sessions that belong to another project.",
           },
         },
@@ -429,13 +385,14 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
 
         // Session-targeted actions are project-scoped by default; a session
         // that belongs to another project needs scope="all".
-        if ((action === "read" || action === "search" || action === "message") && sessionID !== context.sessionID) {
+        if (
+          (action === "read" || action === "search" || action === "message" || action === "content") &&
+          sessionID !== context.sessionID
+        ) {
           const scope = str(input, "scope") === "all" ? "all" : "project";
           if (scope === "project") {
-            const targetInfo = await getSessionInfo(ctx, sessionID).catch(() => undefined);
-            const targetProject = targetInfo
-              ? ((await resolveProjectID(targetInfo).catch(() => undefined)) || targetInfo.projectID)
-              : undefined;
+            const target = await currentProject(ctx, sessionID).catch(() => undefined);
+            const targetProject = target?.projectID;
             if (targetProject && targetProject !== projectID) {
               return {
                 content:
@@ -516,6 +473,56 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
           };
         }
 
+        if (action === "content") {
+          const messageID = str(input, "messageID");
+          if (!messageID) return { content: "Provide `messageID` for action=content." };
+          const rawOffset = input["offset"];
+          const offset =
+            typeof rawOffset === "number" && Number.isFinite(rawOffset) ? Math.max(0, Math.floor(rawOffset)) : undefined;
+          const limit = num(input, "limit", 2000, 1, 8000);
+          let content;
+          try {
+            const fallback = await runtime.index
+              .docsByIds([messageID, `summary:${messageID}`])
+              .catch(() => []);
+            const fallbackText =
+              fallback.find((doc) => doc.messageID === messageID)?.text ?? fallback[0]?.text;
+            content = await readMessageContent(ctx, sessionID, messageID, {
+              query: str(input, "query"),
+              offset,
+              limit,
+              includeTools,
+              includeReasoning,
+              fallbackText,
+            });
+          } catch (error) {
+            return {
+              content: `Could not read ${messageID} from ${sessionID}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            };
+          }
+          if (!content.text) return { content: `Message ${messageID} has no displayable content.` };
+          const previous = content.start > 0 ? Math.max(0, content.start - limit) : undefined;
+          const next = content.end < content.total ? content.end : undefined;
+          const nav = [
+            previous !== undefined ? `previous: offset ${previous}` : "",
+            next !== undefined ? `next: offset ${next}` : "",
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          const header = [
+            `Session \`${sessionID}\` · message \`${messageID}\` · kind: ${content.kind}` +
+              (content.created ? ` · created: ${fmtDate(content.created)}` : "") +
+              (content.agent ? ` · agent: ${content.agent}` : "") +
+              (content.model ? ` · model: ${content.model}` : ""),
+            `Chars ${content.start}–${content.end} of ${content.total} (offset ${content.offset}, limit ${content.length}).` +
+              (nav ? ` [${nav}]` : ""),
+          ];
+          const note = includeTools ? "" : "\n\n> Tool calls hidden; pass includeTools=true to see them.";
+          return { content: `${header.join("\n")}\n\n${content.text}${note}` };
+        }
+
         if (action === "message") {
           const messageID = str(input, "messageID");
           if (!messageID) return { content: "Provide `messageID` for action=message." };
@@ -536,7 +543,7 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
           }
         }
 
-        return { content: `Unknown action "${action}". Use sessions, read, search or message.` };
+        return { content: `Unknown action "${action}". Use sessions, read, search, message or content.` };
       },
       options: { namespace: "memory" },
     });

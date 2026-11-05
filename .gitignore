@@ -1,4 +1,5 @@
 node_modules/
+dist/
 
 # A memoria e estado local da maquina, nunca conteudo de repo.
 *.db

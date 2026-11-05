@@ -133,6 +133,8 @@ export interface ListSessionsOptions {
   projectID?: string;
   scope: "project" | "all";
   limit?: number;
+  /** Number of sessions to skip (GUI pagination). */
+  offset?: number;
   query?: string;
 }
 
@@ -148,7 +150,9 @@ export interface ListSessionsOptions {
  * not silently truncated.
  */
 export async function listSessions(ctx: PluginContext, options: ListSessionsOptions): Promise<SessionInfoLike[]> {
-  const pageSize = Math.max(1, Math.min(100, options.limit ?? 20));
+  const limit = Math.max(1, Math.min(100, options.limit ?? 20));
+  const offset = Math.max(0, Math.floor(options.offset ?? 0));
+  const target = offset + limit;
   const query = options.query?.trim();
   const terms = query ? tokenize(query) : [];
   const projects = await listProjects();
@@ -164,9 +168,9 @@ export async function listSessions(ctx: PluginContext, options: ListSessionsOpti
       : [];
   if (sources.length === 0) sources.push({ project: undefined });
 
-  // Without a query one page per source already covers the limit (≤100);
-  // with a query we may need to page further to collect enough matches.
-  const maxPages = terms.length > 0 ? 5 : 1;
+  // Page until the requested window (offset + limit) is filled; a query may
+  // need more pages because matches are filtered client-side.
+  const maxPages = Math.min(50, Math.max(terms.length > 0 ? 5 : 1, Math.ceil(target / 100)));
 
   const seen = new Set<string>();
   const sessions: SessionInfoLike[] = [];
@@ -193,14 +197,14 @@ export async function listSessions(ctx: PluginContext, options: ListSessionsOpti
         }
         if (terms.length > 0 && !terms.every((term) => sessionHaystack(session, projects).includes(term))) continue;
         sessions.push(session);
-        if (sessions.length >= pageSize) break outer;
+        if (sessions.length >= target) break outer;
       }
       const next = (raw as { cursor?: { next?: string } } | undefined)?.cursor?.next;
       if (!next || next === cursor) break;
       cursor = next;
     }
   }
-  return sessions;
+  return sessions.slice(offset, offset + limit);
 }
 
 export interface ListedMessages {
@@ -405,6 +409,153 @@ export function formatTimeline(
     size += block.length;
   }
   return blocks.join("\n\n---\n\n");
+}
+
+/* ------------------------------------------------------------------ */
+/* GUI / content-window helpers                                        */
+/* ------------------------------------------------------------------ */
+
+export type NarrativeKind = "user" | "assistant" | "summary" | "other";
+
+export function messageKind(message: MessageLike): NarrativeKind {
+  if (message.type === "user") return "user";
+  if (message.type === "assistant") return "assistant";
+  if (message.type === "compaction") return "summary";
+  return "other";
+}
+
+export interface ContentWindow {
+  /** The sliced text. */
+  text: string;
+  /** Full length of the message text, before slicing. */
+  total: number;
+  /** Character offset of the slice inside the full text. */
+  offset: number;
+  /** Length of the slice. */
+  length: number;
+  /** Inclusive start, same as `offset` (kept for UI formatting). */
+  start: number;
+  /** Exclusive end. */
+  end: number;
+}
+
+function firstTermAt(text: string, terms: string[]): number {
+  const lower = text.toLocaleLowerCase();
+  let best = -1;
+  for (const term of terms) {
+    if (!term) continue;
+    const at = lower.indexOf(term.toLocaleLowerCase());
+    if (at >= 0 && (best < 0 || at < best)) best = at;
+  }
+  return best < 0 ? 0 : best;
+}
+
+/**
+ * A bounded window of a message. Without an explicit offset the window is
+ * centered on the first occurrence of any query term (or starts at 0 when
+ * there is no occurrence). The returned `offset` is what the agent uses to
+ * ask for the next window.
+ */
+export function contentWindow(text: string, terms: string[], limit: number, offset?: number): ContentWindow {
+  const total = text.length;
+  const size = Math.max(1, Math.min(8000, Math.floor(limit)));
+  const maxStart = Math.max(0, total - size);
+  let start: number;
+  if (offset !== undefined && Number.isFinite(offset)) {
+    start = Math.max(0, Math.min(maxStart, Math.floor(offset)));
+  } else {
+    const at = firstTermAt(text, terms);
+    start = Math.max(0, Math.min(maxStart, at - Math.floor(size / 2)));
+  }
+  const end = Math.min(total, start + size);
+  return { text: text.slice(start, end), total, offset: start, length: end - start, start, end };
+}
+
+export interface ReadMessageContentOptions extends ExtractOptions {
+  /** Query whose occurrence should be centered when no offset is given. */
+  query?: string | undefined;
+  /** Explicit window start. Omit to center on the first occurrence. */
+  offset?: number | undefined;
+  /** Window size in characters. Defaults to 2000. */
+  limit?: number | undefined;
+  /** Text used when the message is no longer in the timeline (index fallback). */
+  fallbackText?: string | undefined;
+}
+
+export interface MessageContent extends ContentWindow {
+  message?: MessageLike | undefined;
+  source: HistorySource;
+  kind: NarrativeKind;
+  created: number;
+  agent?: string | undefined;
+  model?: string | undefined;
+}
+
+/**
+ * Read a bounded slice of one message's narrative text. Tool calls and
+ * reasoning are opt-in, matching the index extraction.
+ */
+export async function readMessageContent(
+  ctx: PluginContext,
+  sessionID: string,
+  messageID: string,
+  options: ReadMessageContentOptions = {},
+): Promise<MessageContent> {
+  const { api, source } = await getHistoryApi(ctx, sessionID);
+  let message: MessageLike | undefined;
+  try {
+    message = await api.get({ sessionID, messageID });
+  } catch {
+    message = undefined;
+  }
+  const text = (message ? extractSearchText(message, options) : (options.fallbackText ?? "")).trim();
+  const win = contentWindow(text, tokenize(options.query ?? ""), options.limit ?? 2000, options.offset);
+  const agent = typeof message?.agent === "string" && message.agent ? message.agent : undefined;
+  const model = modelLabel(message?.model);
+  return {
+    ...win,
+    ...(message ? { message } : {}),
+    source,
+    kind: message ? messageKind(message) : "other",
+    created: message ? messageCreated(message) : 0,
+    ...(agent ? { agent } : {}),
+    ...(model ? { model } : {}),
+  };
+}
+
+export interface MessageView {
+  id: string;
+  type: string;
+  kind: NarrativeKind;
+  created: number;
+  text: string;
+  agent?: string | undefined;
+  model?: string | undefined;
+  files: string[];
+  hasTools: boolean;
+}
+
+/** One timeline row for the GUI. Messages without narrative text are skipped. */
+export function messageToView(message: MessageLike): MessageView | undefined {
+  const text = extractSearchText(message).trim();
+  if (!text) return undefined;
+  const files = (message.files ?? [])
+    .map((file) => file.name ?? file.description ?? "")
+    .map((name) => name.trim())
+    .filter(Boolean);
+  const agent = typeof message.agent === "string" && message.agent ? message.agent : undefined;
+  const model = modelLabel(message.model);
+  return {
+    id: message.id,
+    type: message.type,
+    kind: messageKind(message),
+    created: messageCreated(message),
+    text,
+    ...(agent ? { agent } : {}),
+    ...(model ? { model } : {}),
+    files,
+    hasTools: (message.content ?? []).some((part) => part.type === "tool"),
+  };
 }
 
 export interface HistorySearchHit {

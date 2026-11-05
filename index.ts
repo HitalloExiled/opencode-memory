@@ -9,6 +9,8 @@
 
 import { Plugin } from "@opencode/plugin";
 import { registerCommands } from "./commands.js";
+import { MemoryRpc } from "./src/gui/contract.js";
+import { createRpcHandlers } from "./src/rpc.js";
 import { openIndex } from "./index-db.js";
 import { onContext } from "./inject.js";
 import { createRuntime } from "./runtime.js";
@@ -28,6 +30,7 @@ export default Plugin.define({
     const registrations = await Promise.all([
       registerTools(ctx, runtime),
       registerCommands(ctx),
+      ctx.rpc.register(MemoryRpc, createRpcHandlers(ctx, runtime)),
       ctx.session.hook("compaction", (event) => {
         // The summary does not exist yet; mark the session and read it on the
         // next agent-loop context.
