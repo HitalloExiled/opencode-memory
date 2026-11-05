@@ -9,6 +9,7 @@
  */
 
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { Portal } from "solid-js/web";
 import { usePlugin } from "@opencode/plugin/gui";
 import {
   MemoryRpc,
@@ -169,6 +170,18 @@ const CSS = `
 .mem-msg-actions { display: flex; justify-content: flex-end; }
 .mem-sentinel { height: 1px; flex: 0 0 auto; }
 .mem-end { color: var(--v2-text-text-faint); font-size: 10px; text-align: center; padding: 4px 0 8px; }
+.mem-quote-toolbar {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--v2-border-border-muted);
+  background: var(--v2-background-bg-layer-01);
+  box-shadow: var(--v2-elevation-raised, 0 4px 16px rgba(0, 0, 0, .2));
+}
 `;
 
 type RpcSession = NonNullable<ReturnType<ReturnType<typeof usePlugin>["sessions"]["current"]>>;
@@ -213,7 +226,8 @@ export function MemoryView() {
   const messageRefs = new Map<string, HTMLElement>();
 
   const [attaching, setAttaching] = createSignal<string | null>(null);
-  const [selected, setSelected] = createSignal<{ messageID: string; text: string } | null>(null);
+  type QuoteToolbar = { messageID: string; text: string; top: number; left: number };
+  const [quoteToolbar, setQuoteToolbar] = createSignal<QuoteToolbar | null>(null);
   let attachSeq = 0;
 
   const currentSession = (): RpcSession | undefined => ctx.sessions.current();
@@ -281,7 +295,7 @@ export function MemoryView() {
     setTimelineSource("");
     setPageIndex(1);
     messageRefs.clear();
-    setSelected(null);
+    setQuoteToolbar(null);
   };
 
   const reload = async () => {
@@ -457,7 +471,7 @@ export function MemoryView() {
     setTimelineSource("");
     setPageIndex(1);
     messageRefs.clear();
-    setSelected(null);
+    setQuoteToolbar(null);
     void loadTimeline(undefined, true);
   };
 
@@ -470,7 +484,7 @@ export function MemoryView() {
     const cursor = nextCursor();
     if (!cursor || loadingMore()) return;
     setPageIndex((value) => value + 1);
-    setSelected(null);
+    setQuoteToolbar(null);
     void loadTimeline(cursor, true);
   };
 
@@ -478,7 +492,7 @@ export function MemoryView() {
     const cursor = previousCursor();
     if (!cursor || loadingMore()) return;
     setPageIndex((value) => Math.max(1, value - 1));
-    setSelected(null);
+    setQuoteToolbar(null);
     void loadTimeline(cursor, true);
   };
 
@@ -489,12 +503,9 @@ export function MemoryView() {
     setNextCursor(undefined);
     setMessages([]);
     messageRefs.clear();
-    setSelected(null);
+    setQuoteToolbar(null);
     void loadTimeline(undefined, true);
   };
-
-  const selectionFor = (messageID: string): string | undefined =>
-    selected()?.messageID === messageID ? selected()?.text : undefined;
 
   interface QuoteTarget {
     sessionID: string;
@@ -507,7 +518,7 @@ export function MemoryView() {
     kind?: string | undefined;
   }
 
-  const addToContext = async (target: QuoteTarget) => {
+  const addToContext = async (target: QuoteTarget): Promise<string | undefined> => {
     const routed = currentSession();
     const screen = ctx.screen.current();
     if (!routed || !screen) {
@@ -516,7 +527,7 @@ export function MemoryView() {
         description: t("toast.noSessionHint"),
         variant: "error",
       });
-      return;
+      return undefined;
     }
     if (!screen.composer.quotable()) {
       ctx.toast.show({
@@ -524,7 +535,7 @@ export function MemoryView() {
         description: t("toast.contextUnavailableHint"),
         variant: "error",
       });
-      return;
+      return undefined;
     }
 
     setAttaching(target.messageID);
@@ -566,7 +577,7 @@ export function MemoryView() {
         );
         if (!content.text) {
           ctx.toast.show({ title: t("toast.contentError"), variant: "error" });
-          return;
+          return undefined;
         }
         quoteText = buildQuote({
           sessionID: target.sessionID,
@@ -592,15 +603,16 @@ export function MemoryView() {
           description: t("toast.noSessionHint"),
           variant: "error",
         });
-        return;
+        return undefined;
       }
       if (!quoteText) {
         ctx.toast.show({ title: t("toast.contentError"), variant: "error" });
-        return;
+        return undefined;
       }
+      const commentID = `memory-${target.messageID}-${++attachSeq}`;
       screen.composer.attach({
         type: "quote",
-        commentID: `memory-${target.messageID}-${++attachSeq}`,
+        commentID,
         text: quoteText,
         source: {
           label: t("sourceLabel", sourceTitle ?? target.sessionID),
@@ -613,15 +625,39 @@ export function MemoryView() {
         description: t("toast.attachedHint"),
         variant: "success",
       });
+      return commentID;
     } catch (cause) {
       ctx.toast.show({
         title: t("toast.attachError"),
         description: cause instanceof Error ? cause.message : String(cause),
         variant: "error",
       });
+      return undefined;
     } finally {
       setAttaching(null);
     }
+  };
+
+  const quoteToolbarSelection = (toolbar: QuoteToolbar, withoutComment: boolean) => {
+    const message = messages().find((entry) => entry.id === toolbar.messageID);
+    const sessionID = timelineSession()?.id ?? selectedSessionID();
+    if (!sessionID) return;
+    setQuoteToolbar(null);
+    window.getSelection()?.removeAllRanges();
+    void addToContext({
+      sessionID,
+      messageID: toolbar.messageID,
+      title: timelineSession()?.title,
+      query: query(),
+      rawText: message?.text,
+      selection: toolbar.text,
+      created: message?.created,
+      kind: message?.kind,
+    }).then((commentID) => {
+      // Same behavior as the native toolbar: "Quote" opens the quote's
+      // comment editor; "Quote without comment" just attaches it.
+      if (!withoutComment && commentID) ctx.screen.current()?.composer.focus(commentID);
+    });
   };
 
   // Projects: the official app API, never the OpenCode database.
@@ -646,30 +682,46 @@ export function MemoryView() {
     );
   });
 
-  // Keep the last selection made inside a message. Reading it at click time
-  // is fragile (the click can collapse the selection), so snapshot it here.
+  // Native-style selection toolbar: selecting text inside a message shows a
+  // floating Quote action, like the session timeline does.
   createEffect(() => {
-    const onSelectionChange = () => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const close = () => setQuoteToolbar(null);
+    const read = () => {
       const selection = window.getSelection();
-      if (!selection || selection.isCollapsed) {
-        setSelected(null);
-        return;
-      }
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) return close();
       const text = selection.toString().trim();
-      if (!text) {
-        setSelected(null);
+      if (!text) return close();
+      for (const [messageID, element] of messageRefs) {
+        if (!element.contains(selection.anchorNode) || !element.contains(selection.focusNode)) continue;
+        const rect = selection.getRangeAt(0).getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return close();
+        setQuoteToolbar({
+          messageID,
+          text,
+          top: Math.min(window.innerHeight - 52, rect.bottom + 6),
+          left: Math.min(window.innerWidth - 280, Math.max(8, rect.left)),
+        });
         return;
       }
-      for (const [messageID, element] of messageRefs) {
-        if (element.contains(selection.anchorNode) && element.contains(selection.focusNode)) {
-          setSelected({ messageID, text });
-          return;
-        }
-      }
-      setSelected(null);
+      close();
     };
+    const onSelectionChange = () => {
+      clearTimeout(timer);
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) return close();
+      timer = setTimeout(read, 120);
+    };
+    const onViewportChange = () => close();
     document.addEventListener("selectionchange", onSelectionChange);
-    onCleanup(() => document.removeEventListener("selectionchange", onSelectionChange));
+    document.addEventListener("scroll", onViewportChange, true);
+    window.addEventListener("resize", onViewportChange);
+    onCleanup(() => {
+      clearTimeout(timer);
+      document.removeEventListener("selectionchange", onSelectionChange);
+      document.removeEventListener("scroll", onViewportChange, true);
+      window.removeEventListener("resize", onViewportChange);
+    });
   });
 
   // Reload when the routed session, scope, query or refresh key changes.
@@ -990,29 +1042,24 @@ export function MemoryView() {
                 </div>
                 <ctx.ui.Markdown text={message.text} class="mem-msg-text" />
                 <div class="mem-msg-actions">
-                  {/* Keep the selection alive when the button is pressed. */}
-                  <span onMouseDown={(event) => event.preventDefault()}>
-                    <ctx.ui.Button
-                      size="small"
-                      variant="ghost"
-                      icon="plus"
-                      busy={attaching() === message.id}
-                      onClick={() =>
-                        void addToContext({
-                          sessionID: timelineSession()?.id ?? selectedSessionID()!,
-                          messageID: message.id,
-                          title: timelineSession()?.title,
-                          query: query(),
-                          rawText: message.text,
-                          selection: selectionFor(message.id),
-                          created: message.created,
-                          kind: message.kind,
-                        })
-                      }
-                    >
-                      {selectionFor(message.id) ? t("quoteSelection") : t("addToContext")}
-                    </ctx.ui.Button>
-                  </span>
+                  <ctx.ui.Button
+                    size="small"
+                    variant="ghost"
+                    icon="plus"
+                    busy={attaching() === message.id}
+                    onClick={() =>
+                      void addToContext({
+                        sessionID: timelineSession()?.id ?? selectedSessionID()!,
+                        messageID: message.id,
+                        title: timelineSession()?.title,
+                        query: query(),
+                        created: message.created,
+                        kind: message.kind,
+                      })
+                    }
+                  >
+                    {t("addToContext")}
+                  </ctx.ui.Button>
                 </div>
               </div>
             )}
@@ -1043,6 +1090,37 @@ export function MemoryView() {
         </Show>
         <div class="mem-sentinel" ref={(element) => (sentinel = element)} />
       </div>
+
+      <Show when={quoteToolbar()}>
+        {(toolbar) => (
+          <Portal>
+            <div
+              class="mem-quote-toolbar"
+              role="toolbar"
+              aria-label={t("quoteActions")}
+              style={{ top: `${toolbar().top}px`, left: `${toolbar().left}px` }}
+              onMouseDown={(event) => event.preventDefault()}
+            >
+              <ctx.ui.Button
+                size="small"
+                variant="ghost"
+                icon="outline-quote"
+                onClick={() => quoteToolbarSelection(toolbar(), true)}
+              >
+                {t("quoteWithoutComment")}
+              </ctx.ui.Button>
+              <ctx.ui.Button
+                size="small"
+                variant="ghost"
+                icon="outline-quote"
+                onClick={() => quoteToolbarSelection(toolbar(), false)}
+              >
+                {t("quote")}
+              </ctx.ui.Button>
+            </div>
+          </Portal>
+        )}
+      </Show>
     </div>
   );
 }
