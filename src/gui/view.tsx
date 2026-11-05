@@ -132,6 +132,12 @@ const CSS = `
 .mem-hit-text mark { background: var(--v2-background-bg-warning, rgba(255, 212, 59, .35)); color: inherit; border-radius: 2px; padding: 0 1px; }
 .mem-hit-actions { display: flex; justify-content: flex-end; }
 .mem-more { padding: 6px 10px; color: var(--v2-text-text-muted); font-size: 10.5px; }
+.mem-conversation-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding-bottom: 2px;
+}
 .mem-back {
   align-self: flex-start;
   border: 0;
@@ -944,6 +950,14 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
         </div>
       </Show>
 
+      <Show when={selectedSessionID()}>
+        <div class="mem-conversation-bar">
+          <button type="button" class="mem-back" onClick={back}>
+            ← {t("back")}
+          </button>
+        </div>
+      </Show>
+
       <Show when={error()}>
         <div class="mem-error">{error()}</div>
       </Show>
@@ -1088,9 +1102,6 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
         </Show>
 
         <Show when={selectedSessionID()}>
-          <button type="button" class="mem-back" onClick={back}>
-            ← {t("back")}
-          </button>
           <div class="mem-timeline-head">
             <div class="mem-timeline-head-row">
               <div class="mem-timeline-title">
