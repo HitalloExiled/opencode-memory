@@ -56,6 +56,8 @@ export function setup(ctx: SetupContext<MemoryDeclarations>): void {
   ctx.add(MenuItem, (): SessionPanelMenuItem => ({
     menu: "session.panel",
     id: "memory",
+    // Native panel actions use orders 10-30; plugin tabs go after them.
+    order: 42,
     title: text("Memória", "Memory"),
     icon: "file-document",
     run: () => {
