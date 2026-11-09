@@ -38,17 +38,17 @@ O plugin é carregado como pacote local em `~/.config/opencode/plugins/memory`.
    que o próprio OpenCode já produziu.
 2. **Injeta contexto no início da sessão.** No primeiro turno de uma sessão
    (e de novo se o projeto mudar), o plugin injeta um bloco
-   `<memory-context>` com: repositório, branch e último commit (o status do
-   working tree fica **fora** do bloco, para não invalidar o cache de prefixo
-   do servidor a cada edição — peça o estado atual sob demanda pela ferramenta
-   `memory.summaries` com `action=repo`) e o handoff da sessão anterior do
-   mesmo projeto — apenas as seções Objective/Next Move, marcadas como *dados
-   não confiáveis* (o corpo completo do resumo nunca entra no system prompt;
-   use `memory.summaries` para ler). Junto ao bloco, o plugin injeta também uma
-   regra de *memory routing* — orientativa e **aditiva** (nunca substitui as
-   instruções originais): consulte a memória antes de redescobrir algo que uma
-   sessão anterior já achou. Isso nunca é persistido — é recalculado a cada
-   injeção. **Notas são outra camada:** o plugin `notes` injeta o próprio bloco
+   `<memory-context>` com o estado do repositório: repositório, branch e último
+   commit (o status do working tree fica **fora** do bloco, para não invalidar
+   o cache de prefixo do servidor a cada edição — peça o estado atual sob
+   demanda pela ferramenta `memory.summaries` com `action=repo`). A compactação
+   da sessão atual já está no contexto ativo e **não** é reinjetada; o resumo de
+   outra sessão também não é injetado — fica a um `memory.summaries` de
+   distância. Junto ao bloco, o plugin injeta também uma regra de *memory
+   routing* — orientativa e **aditiva** (nunca substitui as instruções
+   originais): consulte a memória antes de redescobrir algo que uma sessão
+   anterior já achou. Isso nunca é persistido — é recalculado a cada injeção.
+   **Notas são outra camada:** o plugin `notes` injeta o próprio bloco
    `<notes-context>` e a própria regra; este plugin nunca lê `notes.db`.
 3. **Permite busca cross-sessão.** Um índice derivado (SQLite FTS5, com
    fallback `LIKE` e, por último, JSON) guarda apenas texto de usuário, texto
@@ -71,7 +71,7 @@ O plugin é carregado como pacote local em `~/.config/opencode/plugins/memory`.
 
    Resumos acompanham a sessão: quando uma sessão muda de projeto, os resumos
    dela são movidos do bucket antigo para o novo (consolidação lazy, no
-   próximo contato da sessão — injeção ou backfill) — o handoff e a busca do
+   próximo contato da sessão — injeção ou backfill) — o histórico e a busca do
    novo projeto passam a ver o histórico completo, e os vetores são
    re-bucketeados junto (sem re-embed).
 
