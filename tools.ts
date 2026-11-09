@@ -319,7 +319,9 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
           content: `${header}\n\n${formatSummaryList(records)}\n\nRead one with action="read" and its id.`,
         };
       },
-      options: { namespace: "memory" },
+      // Kept in the Code Mode catalog: the handoff block points here for the
+      // full summary, so it must not be a `search()` away.
+      options: { namespace: "memory", pinned: true },
     });
 
     editor.add({
@@ -547,7 +549,9 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
 
         return { content: `Unknown action "${action}". Use sessions, read, search, message or content.` };
       },
-      options: { namespace: "memory" },
+      // Kept in the Code Mode catalog: "what happened in session X" is the
+      // timeline question, and this is the authoritative source.
+      options: { namespace: "memory", pinned: true },
     });
   });
 }
