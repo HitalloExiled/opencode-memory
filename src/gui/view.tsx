@@ -88,6 +88,7 @@ const CSS = `
   flex-direction: column;
   gap: 3px;
   width: 100%;
+  box-sizing: border-box;
   text-align: left;
   padding: 9px 10px;
   border-radius: 8px;
