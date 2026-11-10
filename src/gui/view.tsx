@@ -55,14 +55,6 @@ const CSS = `
 .mem-search [data-slot="text-input-v2-input"] { padding-inline-end: 30px; }
 .mem-search-clear { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); }
 .mem-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  border: 0;
-  background: transparent;
-  color: var(--v2-text-text-muted);
-  padding: 4px 9px;
-  border-radius: 6px;
-  font-size: 11.5px;
-  cursor: pointer;
-}
 .mem-select {
   margin-left: auto;
   border: 1px solid var(--v2-border-border-muted);
@@ -73,13 +65,6 @@ const CSS = `
   font-size: 11px;
 }
 .mem-status { color: var(--v2-text-text-muted); font-size: 10.5px; line-height: 1.4; }
-  padding: 8px 10px;
-  border-radius: 6px;
-  color: var(--v2-state-fg-danger, #e03131);
-  background: var(--v2-state-bg-danger, rgba(224,49,49,.08));
-  border: 1px solid var(--v2-state-border-danger, rgba(224,49,49,.25));
-  white-space: pre-wrap;
-}
 .mem-note { color: var(--v2-text-text-muted); font-size: 10.5px; line-height: 1.45; }
 .mem-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-right: 2px; padding-bottom: 36px; }
 .mem-section-title { font-weight: 600; font-size: 12px; color: var(--v2-text-text-base); margin-top: 2px; }
@@ -160,33 +145,12 @@ const CSS = `
   background: var(--v2-background-bg-layer-02);
 }
 .mem-msg-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 600;
-  background: var(--v2-overlay-simple-overlay-hover);
-  color: var(--v2-text-text-muted);
-}
 .mem-msg-meta { color: var(--v2-text-text-muted); font-size: 10px; }
 .mem-badge { color: var(--v2-text-text-faint); font-size: 9.5px; border: 1px solid var(--v2-border-border-muted); border-radius: 999px; padding: 0 5px; }
 .mem-msg-text { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; user-select: text; cursor: text; }
 .mem-msg-actions { display: flex; justify-content: flex-end; }
 .mem-sentinel { height: 1px; flex: 0 0 auto; }
 .mem-body { position: relative; display: flex; flex: 1; min-height: 0; }
-  position: absolute;
-  left: 50%;
-  z-index: 10;
-  transform: translateX(-50%);
-}
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  border: 1px solid var(--v2-border-border-muted);
-  background-color: var(--v2-background-bg-layer-01);
-  box-shadow: var(--v2-elevation-raised, 0 4px 16px rgba(0, 0, 0, .2));
-}
 .mem-quote-toolbar {
   position: fixed;
   z-index: 50;
