@@ -1,18 +1,14 @@
 /**
  * Window-side registration for the Memory side panel.
  *
- * Registers a removable "Memory" tab in the session's side region, a command
- * palette / keybind entry, and a "+ / New tab" menu entry.
+ * One side tab, opened from the command palette / keybind and from the
+ * "+ / New tab" menu. The shared `registerSidePanel` keeps the shape the same
+ * as the other panels: listed only while open, a mobile entry, "Recently
+ * closed" support and locale-reactive labels.
  */
 
-import { createMemo } from "solid-js";
-import type {
-  Panel as PanelType,
-  PanelTab,
-  SessionPanelMenuItem,
-  SetupContext,
-} from "@opencode/plugin/gui";
-import { Command, MenuItem, Panel } from "@opencode/plugin/gui";
+import type { SetupContext } from "@opencode/plugin/gui";
+import { registerSidePanel } from "@hitalloexiled/opencode-shared/gui";
 import type { MemoryStores } from "./state";
 import { MemoryView } from "./view";
 
@@ -21,48 +17,19 @@ export const openMemoryId = "memory";
 type MemoryDeclarations = { stores: MemoryStores };
 
 export function setup(ctx: SetupContext<MemoryDeclarations>): void {
-  const text = (pt: string, en: string): string =>
-    (ctx.locale.locale() ?? "").toLowerCase().startsWith("pt") ? pt : en;
-
-  // The host reads the label per session switch; the memo follows the locale.
-  const memoryTab = createMemo<PanelTab>(() => ({
+  registerSidePanel(ctx, {
     id: openMemoryId,
-    title: text("Memória", "Memory"),
-  }));
-
-  const memoryPanel: PanelType = {
-    id: openMemoryId,
-    region: "side",
-    list: () => [memoryTab()],
-    render: (props) => <MemoryView session={props.session} store={ctx.stores.view} />,
-  };
-  ctx.add(Panel, () => memoryPanel);
-
-  ctx.add(Command, () => ({
-    id: "open",
-    title: text("Abrir Memória", "Open Memory"),
-    description: text(
-      "Abre a aba de Memória no painel lateral",
-      "Opens the Memory tab in the side panel",
-    ),
+    title: { pt: "Memória", en: "Memory" },
+    icon: "brain",
+    order: 40,
     bind: "mod+shift+m",
-    group: "general",
-    run: () => {
-      const session = ctx.sessions.current();
-      if (session) ctx.layout.open(`${ctx.id}:${openMemoryId}`, session);
+    command: {
+      title: { pt: "Abrir Memória", en: "Open Memory" },
+      description: {
+        pt: "Abre a aba de Memória no painel lateral",
+        en: "Opens the Memory tab in the side panel",
+      },
     },
-  }));
-
-  ctx.add(MenuItem, (): SessionPanelMenuItem => ({
-    menu: "session.panel",
-    id: "memory",
-    // Native panel actions use orders 10-30; plugin tabs go after them.
-    order: 42,
-    title: text("Memória", "Memory"),
-    icon: "file-document",
-    run: () => {
-      const session = ctx.sessions.current();
-      if (session) ctx.layout.open(`${ctx.id}:${openMemoryId}`, session);
-    },
-  }));
+    view: ({ session }) => <MemoryView session={session} store={ctx.stores.view} />,
+  });
 }

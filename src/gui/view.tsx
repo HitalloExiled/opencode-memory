@@ -8,9 +8,10 @@
  * the offset the agent needs to read around it.
  */
 
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { usePlugin, type MountedSession, type Persisted } from "@opencode/plugin/gui";
+import { usePanel, usePlugin, type MountedSession, type Persisted } from "@opencode/plugin/gui";
+import { SHARED_CSS, ScrollNav, createScrollNav, EmptyState, EndMarker, ErrorBanner, LoadingRow, StatusChip, type ChipTone } from "@hitalloexiled/opencode-shared/gui";
 import type { ViewEntry, ViewState } from "./state";
 import {
   MemoryRpc,
@@ -45,6 +46,7 @@ const CSS = `
 }
 .mem-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .mem-title { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; }
+.mem-title-text { margin: 0; font-size: 13px; font-weight: 600; }
 .mem-sub { color: var(--v2-text-text-muted); font-size: 11px; margin-top: 1px; }
 .mem-actions { display: flex; align-items: center; gap: 4px; }
 .mem-controls { display: flex; flex-direction: column; gap: 6px; }
@@ -53,7 +55,6 @@ const CSS = `
 .mem-search [data-slot="text-input-v2-input"] { padding-inline-end: 30px; }
 .mem-search-clear { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); }
 .mem-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.mem-toggle {
   border: 0;
   background: transparent;
   color: var(--v2-text-text-muted);
@@ -62,9 +63,6 @@ const CSS = `
   font-size: 11.5px;
   cursor: pointer;
 }
-.mem-toggle:hover { color: var(--v2-text-text-base); background: var(--v2-overlay-simple-overlay-hover); }
-.mem-toggle.is-active { color: var(--v2-text-text-base); background: var(--v2-overlay-simple-overlay-pressed); font-weight: 600; }
-.mem-toggle:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: 0; }
 .mem-select {
   margin-left: auto;
   border: 1px solid var(--v2-border-border-muted);
@@ -75,20 +73,15 @@ const CSS = `
   font-size: 11px;
 }
 .mem-status { color: var(--v2-text-text-muted); font-size: 10.5px; line-height: 1.4; }
-.mem-error {
   padding: 8px 10px;
   border-radius: 6px;
-  color: var(--v2-text-text-danger, #e03131);
-  background: var(--v2-background-bg-danger, rgba(224,49,49,.08));
-  border: 1px solid var(--v2-border-border-danger, rgba(224,49,49,.25));
+  color: var(--v2-state-fg-danger, #e03131);
+  background: var(--v2-state-bg-danger, rgba(224,49,49,.08));
+  border: 1px solid var(--v2-state-border-danger, rgba(224,49,49,.25));
   white-space: pre-wrap;
 }
 .mem-note { color: var(--v2-text-text-muted); font-size: 10.5px; line-height: 1.45; }
 .mem-scroll { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; overflow-y: auto; padding-right: 2px; padding-bottom: 36px; }
-.mem-loading { display: flex; align-items: center; gap: 8px; color: var(--v2-text-text-muted); padding: 8px 2px; }
-.mem-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 24px 10px; color: var(--v2-text-text-muted); }
-.mem-empty-title { font-weight: 600; color: var(--v2-text-text-base); }
-.mem-empty-hint { font-size: 11.5px; line-height: 1.45; }
 .mem-section-title { font-weight: 600; font-size: 12px; color: var(--v2-text-text-base); margin-top: 2px; }
 .mem-session {
   display: flex;
@@ -133,7 +126,7 @@ const CSS = `
 .mem-hit:last-child { border-bottom: 0; }
 .mem-hit-meta { color: var(--v2-text-text-muted); font-size: 10px; }
 .mem-hit-text { font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; user-select: text; cursor: text; }
-.mem-hit-text mark { background: var(--v2-background-bg-warning, rgba(255, 212, 59, .35)); color: inherit; border-radius: 2px; padding: 0 1px; }
+.mem-hit-text mark { background: var(--v2-state-bg-warning, rgba(255, 212, 59, .35)); color: inherit; border-radius: 2px; padding: 0 1px; }
 .mem-hit-actions { display: flex; justify-content: flex-end; }
 .mem-more { padding: 6px 10px; color: var(--v2-text-text-muted); font-size: 10.5px; }
 .mem-conversation-bar {
@@ -156,8 +149,6 @@ const CSS = `
 .mem-timeline-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .mem-timeline-title { font-weight: 600; font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
 .mem-timeline-meta { color: var(--v2-text-text-muted); font-size: 10.5px; overflow-wrap: anywhere; }
-.mem-pager { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 2px 0; }
-.mem-page { color: var(--v2-text-text-muted); font-size: 11px; }
 .mem-msg {
   display: flex;
   flex-direction: column;
@@ -168,7 +159,6 @@ const CSS = `
   background: var(--v2-background-bg-layer-02);
 }
 .mem-msg-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.mem-kind {
   display: inline-flex;
   align-items: center;
   padding: 1px 6px;
@@ -178,26 +168,17 @@ const CSS = `
   background: var(--v2-overlay-simple-overlay-hover);
   color: var(--v2-text-text-muted);
 }
-.mem-kind-user { color: #4f8cff; background: rgba(79,140,255,.12); }
-.mem-kind-assistant { color: #2f9e44; background: rgba(47,158,68,.12); }
-.mem-kind-summary { color: #e8590c; background: rgba(232,89,12,.12); }
 .mem-msg-meta { color: var(--v2-text-text-muted); font-size: 10px; }
 .mem-badge { color: var(--v2-text-text-faint); font-size: 9.5px; border: 1px solid var(--v2-border-border-muted); border-radius: 999px; padding: 0 5px; }
 .mem-msg-text { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; user-select: text; cursor: text; }
 .mem-msg-actions { display: flex; justify-content: flex-end; }
 .mem-sentinel { height: 1px; flex: 0 0 auto; }
-.mem-end { color: var(--v2-text-text-faint); font-size: 10px; text-align: center; padding: 4px 0 8px; }
 .mem-body { position: relative; display: flex; flex: 1; min-height: 0; }
-.mem-jump-top,
-.mem-jump-bottom {
   position: absolute;
   left: 50%;
   z-index: 10;
   transform: translateX(-50%);
 }
-.mem-jump-top { top: 12px; }
-.mem-jump-bottom { bottom: 12px; }
-.mem-body .mem-jump[data-component="icon-button-v2"] {
   width: 32px;
   height: 32px;
   border-radius: 8px;
@@ -225,6 +206,7 @@ const LIST_PAGE_SIZE = 20;
 
 export function MemoryView(props: { session: MountedSession; store: Persisted<ViewState> }) {
   const ctx = usePlugin();
+  const panel = usePanel();
   const t = useT();
 
   const [query, setQuery] = createSignal("");
@@ -253,14 +235,9 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
   const [timelineSession, setTimelineSession] = createSignal<SessionView | null>(null);
   const [messages, setMessages] = createSignal<MessageView[]>([]);
   const [nextCursor, setNextCursor] = createSignal<string | undefined>(undefined);
-  const [previousCursor, setPreviousCursor] = createSignal<string | undefined>(undefined);
   const [timelineHasMore, setTimelineHasMore] = createSignal(false);
   const [timelinePartial, setTimelinePartial] = createSignal(false);
   const [timelineSource, setTimelineSource] = createSignal("");
-  const [paginated, setPaginated] = createSignal(false);
-  const [pageIndex, setPageIndex] = createSignal(1);
-  const [showTop, setShowTop] = createSignal(false);
-  const [showBottom, setShowBottom] = createSignal(false);
   const messageRefs = new Map<string, HTMLElement>();
 
   const [attaching, setAttaching] = createSignal<string | null>(null);
@@ -274,7 +251,6 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
 
   let restoredFor = "";
   let restoreSelected = false;
-  let scrollRef: HTMLDivElement | undefined;
   let listGen = 0;
   let timelineGen = 0;
   let listController: AbortController | undefined;
@@ -311,6 +287,9 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
           ? t("kindSummary")
           : t("kindOther");
 
+  const kindTone = (kind: string): ChipTone =>
+    kind === "user" ? "info" : kind === "assistant" ? "success" : "warning";
+
   const resetList = () => {
     setHits([]);
     setHitsHasMore(false);
@@ -329,16 +308,14 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
     setTimelineSession(null);
     setMessages([]);
     setNextCursor(undefined);
-    setPreviousCursor(undefined);
     setTimelineHasMore(false);
     setTimelinePartial(false);
     setTimelineSource("");
-    setPageIndex(1);
     messageRefs.clear();
     setQuoteToolbar(null);
   };
 
-  const loadList = async (page = 0, reset = false, scrollTop = false) => {
+  const loadList = async (page = 0, reset = false) => {
     const gen = ++listGen;
     listController?.abort();
     const controller = new AbortController();
@@ -391,7 +368,11 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
           callOptions,
         );
         if (gen !== listGen) return;
-        setHits([...result.hits]);
+        setHits((previous) =>
+          current === 0
+            ? [...result.hits]
+            : [...previous, ...result.hits.filter((hit) => !previous.some((item) => item.id === hit.id))],
+        );
         setHitsHasMore(result.hasMore);
         setSearchPartial(result.partial);
         setVectorNote(result.vectorNote ?? "");
@@ -401,12 +382,15 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
           callOptions,
         );
         if (gen !== listGen) return;
-        setSessions([...result.sessions]);
+        setSessions((previous) =>
+          current === 0
+            ? [...result.sessions]
+            : [...previous, ...result.sessions.filter((item) => !previous.some((old) => old.id === item.id))],
+        );
         setSessionsHasMore(result.hasMore);
       }
       if (gen === listGen) {
         setListPage(current);
-        if (scrollTop) scrollRef?.scrollTo({ top: 0 });
       }
     } catch (cause) {
       if (gen === listGen && !controller.signal.aborted) {
@@ -417,17 +401,12 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
     }
   };
 
-  const reload = (page = 0) => loadList(page, true);
+  const reload = () => loadList(0, true);
 
-  const nextListPage = () => {
+  const loadMoreList = () => {
     if (loading()) return;
     if (!(query().trim() ? hitsHasMore() : sessionsHasMore())) return;
-    void loadList(listPage() + 1, false, true);
-  };
-
-  const previousListPage = () => {
-    if (loading() || listPage() === 0) return;
-    void loadList(listPage() - 1, false, true);
+    void loadList(listPage() + 1);
   };
 
   const loadTimeline = async (cursor?: string, replace = false) => {
@@ -460,7 +439,6 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
         return [...previous, ...fresh];
       });
       setNextCursor(result.nextCursor);
-      setPreviousCursor(result.previousCursor);
       setTimelineHasMore(result.hasMore);
       setTimelinePartial(result.partial);
       setTimelineSource(result.source);
@@ -478,46 +456,17 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
     setTimelineSession(session);
     setMessages([]);
     setNextCursor(undefined);
-    setPreviousCursor(undefined);
     setTimelineHasMore(false);
     setTimelinePartial(false);
     setTimelineSource("");
-    setPageIndex(1);
     messageRefs.clear();
     setQuoteToolbar(null);
     void loadTimeline(undefined, true);
   };
 
   const loadMoreTimeline = () => {
-    if (paginated() || loadingMore() || !timelineHasMore() || !nextCursor()) return;
+    if (loadingMore() || !timelineHasMore() || !nextCursor()) return;
     void loadTimeline(nextCursor());
-  };
-
-  const nextPage = () => {
-    const cursor = nextCursor();
-    if (!cursor || loadingMore()) return;
-    setPageIndex((value) => value + 1);
-    setQuoteToolbar(null);
-    void loadTimeline(cursor, true);
-  };
-
-  const previousPage = () => {
-    const cursor = previousCursor();
-    if (!cursor || loadingMore()) return;
-    setPageIndex((value) => Math.max(1, value - 1));
-    setQuoteToolbar(null);
-    void loadTimeline(cursor, true);
-  };
-
-  const togglePaginated = () => {
-    setPaginated((value) => !value);
-    setPageIndex(1);
-    setPreviousCursor(undefined);
-    setNextCursor(undefined);
-    setMessages([]);
-    messageRefs.clear();
-    setQuoteToolbar(null);
-    void loadTimeline(undefined, true);
   };
 
   interface QuoteTarget {
@@ -755,16 +704,13 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
     setQuery(saved?.query ?? "");
     setProjectOnly(saved?.projectOnly ?? true);
     setQuoteChars(saved?.quoteChars ?? QUOTE_CHARS_DEFAULT);
-    setPaginated(saved?.paginated ?? false);
     setSelectedSessionID(saved?.selected?.id ?? null);
     setTimelineSession(saved?.selected ?? null);
     setMessages([]);
     setNextCursor(undefined);
-    setPreviousCursor(undefined);
     setTimelineHasMore(false);
     setTimelinePartial(false);
     setTimelineSource("");
-    setPageIndex(1);
     messageRefs.clear();
     setQuoteToolbar(null);
     setHydratedSession(id);
@@ -780,8 +726,6 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
     const timer = setTimeout(() => {
       if (restore) {
         restoreSelected = false;
-        setPageIndex(1);
-        setPreviousCursor(undefined);
         setQuoteToolbar(null);
         void loadTimeline(undefined, true);
       } else {
@@ -799,7 +743,7 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
       query: query(),
       projectOnly: projectOnly(),
       quoteChars: quoteChars(),
-      paginated: paginated(),
+      paginated: false,
       ...(timelineSession() ? { selected: timelineSession()! } : {}),
     };
     props.store.update((draft) => {
@@ -807,75 +751,34 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
     });
   });
 
-  // Infinite scroll: one sentinel at the bottom of the scroll container.
-  let sentinel: HTMLDivElement | undefined;
-  let observer: IntersectionObserver | undefined;
-
-  const updateJumps = () => {
-    const element = scrollRef;
-    if (!element) return;
-    setShowTop(element.scrollTop > 24);
-    setShowBottom(element.scrollTop + element.clientHeight < element.scrollHeight - 24);
-  };
-
-  const scrollToTop = () => {
-    scrollRef?.scrollTo({ top: 0 });
-  };
-
-  const scrollToBottom = () => {
-    const element = scrollRef;
-    if (!element) return;
-    element.scrollTo({ top: element.scrollHeight });
-    if (!paginated() && timelineHasMore()) void loadMoreTimeline();
-  };
-  onMount(() => {
-    observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        if (selectedSessionID() && !paginated()) void loadMoreTimeline();
-      },
-      { root: scrollRef ?? null, rootMargin: "200px" },
-    );
-    if (sentinel) observer.observe(sentinel);
+  // Infinite scroll and keyboard navigation for the shared scroll container.
+  const nav = createScrollNav({
+    hasMore: () =>
+      selectedSessionID()
+        ? timelineHasMore()
+        : query().trim()
+          ? hitsHasMore()
+          : sessionsHasMore(),
+    loadingMore: () => (selectedSessionID() ? loadingMore() : loading()),
+    loadMore: () => {
+      if (selectedSessionID()) loadMoreTimeline();
+      else loadMoreList();
+    },
+    visible: () => panel.visible(),
+    items: () =>
+      selectedSessionID()
+        ? messages().length
+        : query().trim()
+          ? hits().length
+          : sessions().length,
   });
   onCleanup(() => {
-    observer?.disconnect();
     listController?.abort();
     timelineController?.abort();
   });
 
-  // Safety net for short pages: if the sentinel is already visible after a
-  // page lands, keep filling until it is below the viewport (or the end).
-  createEffect(() => {
-    const has = selectedSessionID() && !paginated() && timelineHasMore();
-    const busy = loading() || loadingMore();
-    // Re-run after a page is appended even when `hasMore` stays true.
-    messages().length;
-    if (!has || busy) return;
-    const frame = requestAnimationFrame(() => {
-      const element = sentinel;
-      const root = scrollRef;
-      if (!element || !root) return;
-      const rect = element.getBoundingClientRect();
-      const rootRect = root.getBoundingClientRect();
-      if (rect.top <= rootRect.bottom + 200) void loadMoreTimeline();
-    });
-    onCleanup(() => cancelAnimationFrame(frame));
-  });
-
-  // Keep the jump buttons in step with the rendered conversation.
-  createEffect(() => {
-    messages().length;
-    selectedSessionID();
-    loadingMore();
-    const frame = requestAnimationFrame(updateJumps);
-    onCleanup(() => cancelAnimationFrame(frame));
-  });
-
   const refresh = () => {
     if (selectedSessionID()) {
-      setPageIndex(1);
-      setPreviousCursor(undefined);
       setQuoteToolbar(null);
       void loadTimeline(undefined, true);
     } else {
@@ -894,12 +797,13 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
   return (
     <div class="mem">
       <style>{CSS}</style>
+      <style>{SHARED_CSS}</style>
 
       <div class="mem-head">
         <div>
           <div class="mem-title">
-            <ctx.ui.Icon name="file-document" size="small" />
-            <span>{t("title")}</span>
+            <ctx.ui.Icon name="brain" size="small" />
+            <h2 class="mem-title-text">{t("title")}</h2>
             <span class="mem-sub">{t("resultsCount", totalCount())}</span>
           </div>
           <div class="mem-sub">{t("subtitle")}</div>
@@ -977,25 +881,27 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
       </Show>
 
       <Show when={error()}>
-        <div class="mem-error">{error()}</div>
+        <ErrorBanner message={error()} />
       </Show>
 
       <div class="mem-body">
-        <div class="mem-scroll" ref={(element) => (scrollRef = element)} onScroll={updateJumps}>
+        <div
+          class="mem-scroll os-scroll"
+          ref={nav.ref}
+          onKeyDown={nav.onKeyDown}
+          tabIndex={nav.scrollable() ? 0 : undefined}
+          role="region"
+          aria-label={t("scroll.region")}
+        >
         <Show when={!selectedSessionID()}>
           <Show when={loading() && hits().length === 0 && sessions().length === 0}>
-            <div class="mem-loading">
-              <ctx.ui.Loader size="small" /> {t("loading")}
-            </div>
+            <LoadingRow label={t("loading")} />
           </Show>
 
           <Show when={query().trim()}>
             <div class="mem-section-title">{t("resultsCount", groups().length)}</div>
             <Show when={!loading() && groups().length === 0}>
-              <div class="mem-empty">
-                <div class="mem-empty-title">{t("searchEmpty")}</div>
-                <div class="mem-empty-hint">{t("searchHint")}</div>
-              </div>
+              <EmptyState title={t("searchEmpty")} hint={t("searchHint")} />
             </Show>
             <For each={groups()}>
               {(group) => (
@@ -1076,9 +982,7 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
           <Show when={!query().trim()}>
             <div class="mem-section-title">{t("recentTitle")}</div>
             <Show when={!loading() && sessions().length === 0}>
-              <div class="mem-empty">
-                <div class="mem-empty-title">{t("recentEmpty")}</div>
-              </div>
+              <EmptyState title={t("recentEmpty")} />
             </Show>
             <For each={sessions()}>
               {(session) => (
@@ -1096,27 +1000,6 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
             </For>
           </Show>
 
-          <Show when={listPage() > 0 || (query().trim() ? hitsHasMore() : sessionsHasMore())}>
-            <div class="mem-pager">
-              <ctx.ui.Button
-                size="small"
-                variant="ghost"
-                disabled={listPage() === 0 || loading()}
-                onClick={previousListPage}
-              >
-                ← {t("prevPage")}
-              </ctx.ui.Button>
-              <span class="mem-page">{t("page", listPage() + 1)}</span>
-              <ctx.ui.Button
-                size="small"
-                variant="ghost"
-                disabled={!(query().trim() ? hitsHasMore() : sessionsHasMore()) || loading()}
-                onClick={nextListPage}
-              >
-                {t("nextPage")} →
-              </ctx.ui.Button>
-            </div>
-          </Show>
         </Show>
 
         <Show when={selectedSessionID()}>
@@ -1125,15 +1008,6 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
               <div class="mem-timeline-title">
                 {timelineSession()?.title || timelineSession()?.id || t("conversation")}
               </div>
-              <button
-                type="button"
-                class="mem-toggle"
-                classList={{ "is-active": paginated() }}
-                title={t("paginateHint")}
-                onClick={togglePaginated}
-              >
-                {t("paginate")}
-              </button>
             </div>
             <div class="mem-timeline-meta">
               {projectLabel(timelineSession()?.projectID, timelineSession()?.directory)}
@@ -1142,27 +1016,6 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
                 : ""}
             </div>
           </div>
-          <Show when={paginated()}>
-            <div class="mem-pager">
-              <ctx.ui.Button
-                size="small"
-                variant="ghost"
-                disabled={!previousCursor() || loadingMore()}
-                onClick={previousPage}
-              >
-                ← {t("prevPage")}
-              </ctx.ui.Button>
-              <span class="mem-page">{t("page", pageIndex())}</span>
-              <ctx.ui.Button
-                size="small"
-                variant="ghost"
-                disabled={!nextCursor() || loadingMore()}
-                onClick={nextPage}
-              >
-                {t("nextPage")} →
-              </ctx.ui.Button>
-            </div>
-          </Show>
           <div class="mem-note">{t("selectionHint")}</div>
           <Show when={timelinePartial()}>
             <div class="mem-note">
@@ -1179,7 +1032,7 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
                 }}
               >
                 <div class="mem-msg-head">
-                  <span class={`mem-kind mem-kind-${message.kind}`}>{kindLabel(message.kind)}</span>
+                  <StatusChip tone={kindTone(message.kind)} label={kindLabel(message.kind)} />
                   <span class="mem-msg-meta">
                     {formatDate(message.created)}
                     {message.agent ? ` · ${message.agent}` : ""}
@@ -1214,51 +1067,27 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
             )}
           </For>
           <Show when={!loadingMore() && messages().length === 0}>
-            <div class="mem-empty">
-              <div class="mem-empty-title">{t("noMessages")}</div>
-            </div>
+            <EmptyState title={t("noMessages")} />
           </Show>
         </Show>
 
         <Show when={loadingMore()}>
-          <div class="mem-loading">
-            <ctx.ui.Loader size="small" /> {t("loadingMore")}
-          </div>
+          <LoadingRow label={t("loadingMore")} />
         </Show>
         <Show
           when={
             selectedSessionID() &&
-            !paginated() &&
             !loading() &&
             !loadingMore() &&
             !timelineHasMore()
           }
         >
-          <div class="mem-end">{t("end")}</div>
+          <EndMarker label={t("end")} />
         </Show>
-        <div class="mem-sentinel" ref={(element) => (sentinel = element)} />
+        <div class="mem-sentinel" ref={nav.sentinelRef} />
         </div>
 
-        <Show when={selectedSessionID() && showTop()}>
-          <ctx.ui.IconButton
-            icon="arrow-up"
-            label={t("scrollTop")}
-            variant="neutral"
-            size="normal"
-            class="mem-jump mem-jump-top"
-            onClick={scrollToTop}
-          />
-        </Show>
-        <Show when={selectedSessionID() && showBottom()}>
-          <ctx.ui.IconButton
-            icon="arrow-down-to-line"
-            label={t("scrollBottom")}
-            variant="neutral"
-            size="normal"
-            class="mem-jump mem-jump-bottom"
-            onClick={scrollToBottom}
-          />
-        </Show>
+        <ScrollNav nav={nav} topLabel={t("scroll.top")} bottomLabel={t("scroll.bottom")} />
       </div>
 
       <Show when={quoteToolbar()}>

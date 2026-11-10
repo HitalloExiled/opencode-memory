@@ -41,6 +41,24 @@ dist/gui-experimental.cjs  BUILT GUI artifact (gitignored)
 - **Notes are another layer.** This plugin never reads `notes.db`; the notes
   plugin injects its own `<notes-context>`.
 
+## GUI guideline (shared kit)
+
+The visual and behavioral contract for the side panels is
+[docs/gui-guideline.md](https://github.com/HitalloExiled/opencode-tools/blob/main/docs/gui-guideline.md).
+GUI code used by more than one plugin lives in
+`@hitalloexiled/opencode-shared/gui` (the parent's `shared/` submodule, linked
+into `node_modules` by `setup.sh`) — never copy it into this repo.
+
+Non-negotiables:
+
+- only theme tokens (`--v2-*`); status via `--v2-state-*`; no raw hex.
+- controls from `ctx.ui.*`; never a text action in a raw `<button>`.
+- one scroll container per panel with the shared `ScrollNav` (infinite scroll,
+  to-top/to-bottom, Home/End/PageUp/PageDown).
+- every visible string in `src/gui/i18n.ts` (PT-BR + EN-US).
+- shared `EmptyState`, `ErrorBanner`, `LoadingRow`, `EndMarker` and
+  `StatusChip` instead of local copies.
+
 ## Build / typecheck / test
 
 ```bash
