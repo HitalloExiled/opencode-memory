@@ -777,6 +777,13 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
     timelineController?.abort();
   });
 
+  // A new query or scope starts from the top of the list.
+  createEffect(() => {
+    query();
+    projectOnly();
+    nav.toTop();
+  });
+
   const refresh = () => {
     if (selectedSessionID()) {
       setQuoteToolbar(null);
