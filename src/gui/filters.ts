@@ -78,14 +78,16 @@ export function highlightParts(text: string, terms: readonly string[]): Highligh
     .filter((part) => part.text.length > 0);
 }
 
-export function formatCharsRange(start: number, end: number, total: number): string {
-  return `chars ${start}–${end} de ${total}`;
+export type Translate = (key: string, ...args: unknown[]) => string;
+
+export function formatCharsRange(start: number, end: number, total: number, t: Translate): string {
+  return t("quote.chars", start, end, total);
 }
 
-function isoDate(ms: number): string {
-  if (!ms) return "data desconhecida";
+function isoDate(ms: number, t: Translate): string {
+  if (!ms) return t("quote.unknownDate");
   const date = new Date(ms);
-  if (Number.isNaN(date.getTime())) return "data desconhecida";
+  if (Number.isNaN(date.getTime())) return t("quote.unknownDate");
   return date.toISOString().replace("T", " ").slice(0, 16) + "Z";
 }
 
@@ -110,16 +112,16 @@ export interface QuoteInput {
 /**
  * The text attached to the composer. It always carries the total size and the
  * offset of the slice, plus the exact tool call the agent can use to read
- * around the occurrence.
+ * around the occurrence. Every label comes from the panel's translation table.
  */
-export function buildQuote(input: QuoteInput): string {
+export function buildQuote(input: QuoteInput, t: Translate): string {
   const title = input.title?.trim() || input.sessionID;
-  const occurrence = input.query?.trim() ? ` · ocorrência de "${input.query.trim()}"` : "";
-  const selected = input.selected ? " (trecho selecionado)" : "";
+  const occurrence = input.query?.trim() ? ` · ${t("quote.occurrence", input.query.trim())}` : "";
+  const selected = input.selected ? ` ${t("quote.selected")}` : "";
   const header = [
-    `[memória] ${title} · sessão ${input.sessionID} · mensagem ${input.messageID} · ${input.kind} · ${isoDate(input.created)}${occurrence}${selected}`,
-    `Trecho: ${formatCharsRange(input.start, input.end, input.total)} (offset ${input.offset}, tamanho ${input.length}; truncado em ${input.limit}).`,
-    `Para consultar em torno da ocorrência: memory.history action="content" sessionID="${input.sessionID}" messageID="${input.messageID}" offset=${input.start} limit=${input.limit} scope="all"`,
+    `[${t("quote.tag")}] ${title} · ${t("quote.session")} ${input.sessionID} · ${t("quote.message")} ${input.messageID} · ${input.kind} · ${isoDate(input.created, t)}${occurrence}${selected}`,
+    t("quote.range", formatCharsRange(input.start, input.end, input.total, t), input.offset, input.length, input.limit),
+    `${t("quote.around")} memory.history action="content" sessionID="${input.sessionID}" messageID="${input.messageID}" offset=${input.start} limit=${input.limit} scope="all"`,
   ];
   return `${header.join("\n")}\n\n${input.text}`;
 }

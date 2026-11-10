@@ -1,18 +1,10 @@
 /**
- * Memory GUI copy. PT-BR and EN-US, following the Opencode locale; anything
- * else falls back to EN-US. Keys missing from PT-BR fall back to EN-US.
+ * Memory GUI copy. PT-BR and EN-US, following the OpenCode locale;
+ * anything else falls back to EN-US. The shared factory keeps the PT table
+ * typed against the EN keys.
  */
 
-import { createMemo } from "solid-js";
-import type { Accessor } from "solid-js";
-import { usePlugin } from "@opencode/plugin/gui";
-
-export type SupportedLocale = "en-us" | "pt-br";
-
-export function supportedLocale(raw?: string): SupportedLocale {
-  const tag = (raw ?? "").trim().toLowerCase().replace(/[-_]/g, "");
-  return tag.startsWith("pt") ? "pt-br" : "en-us";
-}
+import { createI18n } from "opencode-shared/gui";
 
 const EN = {
   title: "Memory",
@@ -67,6 +59,15 @@ const EN = {
   "toast.attachError": "Could not add the quote",
   "toast.loadError": "Could not load memory",
   "toast.contentError": "Could not read the message",
+  "quote.tag": "memory",
+  "quote.session": "session",
+  "quote.message": "message",
+  "quote.occurrence": "match for \"{0}\"",
+  "quote.selected": "(selected excerpt)",
+  "quote.range": "Excerpt: {0} (offset {1}, size {2}; truncated at {3}).",
+  "quote.chars": "chars {0}–{1} of {2}",
+  "quote.around": "To read around the match:",
+  "quote.unknownDate": "unknown date",
 };
 
 const PT: Record<keyof typeof EN, string> = {
@@ -122,23 +123,15 @@ const PT: Record<keyof typeof EN, string> = {
   "toast.attachError": "Não foi possível adicionar o trecho",
   "toast.loadError": "Não foi possível carregar a memória",
   "toast.contentError": "Não foi possível ler a mensagem",
+  "quote.tag": "memória",
+  "quote.session": "sessão",
+  "quote.message": "mensagem",
+  "quote.occurrence": "ocorrência de \"{0}\"",
+  "quote.selected": "(trecho selecionado)",
+  "quote.range": "Trecho: {0} (offset {1}, tamanho {2}; truncado em {3}).",
+  "quote.chars": "chars {0}–{1} de {2}",
+  "quote.around": "Para consultar em torno da ocorrência:",
+  "quote.unknownDate": "data desconhecida",
 };
 
-const tables: Record<SupportedLocale, Record<string, string>> = {
-  "en-us": EN,
-  "pt-br": { ...EN, ...PT },
-};
-
-export function useLocale(): Accessor<SupportedLocale> {
-  const ctx = usePlugin();
-  return createMemo(() => supportedLocale(ctx.locale.locale()));
-}
-
-export function useT(): (key: string, ...args: unknown[]) => string {
-  const locale = useLocale();
-  return (key: string, ...args: unknown[]): string => {
-    const table = tables[locale()];
-    const value = table[key] ?? (typeof args[0] === "string" ? args[0] : key);
-    return value.replace(/\{(\d+)\}/g, (_, i: string) => String(args[Number(i)] ?? ""));
-  };
-}
+export const { useLocale, useT } = createI18n(EN, PT);

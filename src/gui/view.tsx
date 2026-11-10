@@ -525,7 +525,7 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
           end: start + length,
           limit: quoteChars(),
           selected: true,
-        });
+        }, t);
       } else {
         const { client, options } = clientFor(routed);
         const content = await client.content(
@@ -555,7 +555,7 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
           end: content.end,
           limit: quoteChars(),
           query: target.query,
-        });
+        }, t);
         sourceTitle = content.title ?? target.title;
       }
 

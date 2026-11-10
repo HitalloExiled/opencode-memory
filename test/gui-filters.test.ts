@@ -9,6 +9,21 @@ import {
   termsOf,
 } from "../src/gui/filters.js";
 
+const quoteLabels = (key: string, ...args: unknown[]): string => {
+  const table: Record<string, string> = {
+    "quote.tag": "memória",
+    "quote.session": "sessão",
+    "quote.message": "mensagem",
+    "quote.occurrence": 'ocorrência de "{0}"',
+    "quote.selected": "(trecho selecionado)",
+    "quote.range": "Trecho: {0} (offset {1}, tamanho {2}; truncado em {3}).",
+    "quote.chars": "chars {0}–{1} de {2}",
+    "quote.around": "Para consultar em torno da ocorrência:",
+    "quote.unknownDate": "data desconhecida",
+  };
+  return (table[key] ?? key).replace(/\{(\d+)\}/g, (_, index: string) => String(args[Number(index)] ?? ""));
+};
+
 const hit = (overrides: Partial<HitView> & Pick<HitView, "id" | "sessionID">): HitView => ({
   projectID: "p1",
   kind: "user",
@@ -82,7 +97,7 @@ describe("buildQuote", () => {
       end: 6000,
       limit: 2000,
       query: "needle",
-    });
+    }, quoteLabels);
     expect(text).toContain("[memória] A conversation · sessão ses_1 · mensagem msg_1 · assistant");
     expect(text).toContain("2026-01-02 03:04Z");
     expect(text).toContain('ocorrência de "needle"');
