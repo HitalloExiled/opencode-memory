@@ -81,7 +81,7 @@ const CSS = `
   white-space: pre-wrap;
 }
 .mem-note { color: var(--v2-text-text-muted); font-size: 10.5px; line-height: 1.45; }
-.mem-scroll { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; overflow-y: auto; padding-right: 2px; padding-bottom: 36px; }
+.mem-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-right: 2px; padding-bottom: 36px; }
 .mem-section-title { font-weight: 600; font-size: 12px; color: var(--v2-text-text-base); margin-top: 2px; }
 .mem-session {
   display: flex;
@@ -893,7 +893,7 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
 
       <div class="mem-body">
         <div
-          class="mem-scroll os-scroll"
+          class="mem-scroll os-scroll os-list"
           ref={nav.ref}
           onKeyDown={nav.onKeyDown}
           tabIndex={nav.scrollable() ? 0 : undefined}

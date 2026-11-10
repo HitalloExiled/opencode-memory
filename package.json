@@ -22,7 +22,7 @@
   "dependencies": {
     "@huggingface/transformers": "^4.3.1",
     "onnxruntime-node": "^1.30.0",
-    "opencode-shared": "github:HitalloExiled/opencode-shared#5880cafa18f5e038f4ce120eeb3dcf42235c124f"
+    "opencode-shared": "github:HitalloExiled/opencode-shared#6d5edd2e40e43f7ea28e88290cf1e398b7cf7d29"
   },
   "devDependencies": {
     "@opencode-ai/plugin": "1.17.7",
