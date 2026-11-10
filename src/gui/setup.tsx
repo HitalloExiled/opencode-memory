@@ -8,7 +8,7 @@
  */
 
 import type { SetupContext } from "@opencode/plugin/gui";
-import { registerSidePanel } from "@hitalloexiled/opencode-shared/gui";
+import { registerSidePanel } from "opencode-shared/gui";
 import type { MemoryStores } from "./state";
 import { MemoryView } from "./view";
 

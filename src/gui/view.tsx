@@ -11,7 +11,7 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import { usePanel, usePlugin, type MountedSession, type Persisted } from "@opencode/plugin/gui";
-import { SHARED_CSS, ScrollNav, createScrollNav, EmptyState, EndMarker, ErrorBanner, LoadingRow, StatusChip, type ChipTone } from "@hitalloexiled/opencode-shared/gui";
+import { SHARED_CSS, ScrollNav, createScrollNav, EmptyState, EndMarker, ErrorBanner, LoadingRow, StatusChip, type ChipTone } from "opencode-shared/gui";
 import type { ViewEntry, ViewState } from "./state";
 import {
   MemoryRpc,
