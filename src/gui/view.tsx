@@ -82,7 +82,10 @@ const CSS = `
   color: var(--v2-text-text-base);
   cursor: pointer;
 }
-.mem-session:hover { border-color: var(--v2-border-border-strong); }
+.mem-session:hover {
+  border-color: var(--v2-border-border-strong);
+  background-image: linear-gradient(var(--v2-overlay-simple-overlay-hover), var(--v2-overlay-simple-overlay-hover));
+}
 .mem-session:focus-visible { outline: 2px solid var(--v2-border-border-focus); outline-offset: 0; }
 .mem-session-title { font-weight: 600; font-size: 12.5px; line-height: 1.3; overflow-wrap: anywhere; }
 .mem-session-meta { color: var(--v2-text-text-muted); font-size: 10.5px; overflow-wrap: anywhere; }
