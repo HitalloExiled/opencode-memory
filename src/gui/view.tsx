@@ -749,7 +749,7 @@ export function MemoryView(props: { session: MountedSession; store: Persisted<Vi
   createEffect(() => {
     query();
     projectOnly();
-    nav.toTop();
+    nav.reset();
   });
 
   const refresh = () => {
