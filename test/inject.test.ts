@@ -52,4 +52,11 @@ describe("MEMORY_ROUTING_RULE", () => {
   test("stays inside the memory layer: it never mentions notes", () => {
     expect(MEMORY_ROUTING_RULE.toLowerCase()).not.toContain("notes");
   });
+
+  test("routes exact quotes through the tools and forbids the internal database", () => {
+    expect(MEMORY_ROUTING_RULE).toContain('action="message"');
+    expect(MEMORY_ROUTING_RULE).toContain("messageID");
+    expect(MEMORY_ROUTING_RULE).toContain("internal database");
+    expect(MEMORY_ROUTING_RULE).not.toContain("opencode.db");
+  });
 });

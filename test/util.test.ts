@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { clip, fmtDate, normalizeWhitespace, safeFilename, snippet, timeMs, tokenize } from "../util.js";
+import { clip, fmtDate, normalizeWhitespace, parseDateBound, safeFilename, snippet, timeMs, tokenize } from "../util.js";
 
 describe("tokenize", () => {
   test("lowercases, dedupes and drops one-character terms", () => {
@@ -76,6 +76,23 @@ describe("timeMs and fmtDate", () => {
   test("formats zero as unknown", () => {
     expect(fmtDate(0)).toBe("unknown");
     expect(fmtDate(Date.parse("2026-10-22T12:34:56Z"))).toBe("2026-10-22 12:34Z");
+  });
+});
+
+describe("parseDateBound", () => {
+  test("a bare date covers the whole local day", () => {
+    const start = parseDateBound("2026-11-01", "start")!;
+    const end = parseDateBound("2026-11-01", "end")!;
+    expect(new Date(start).getHours()).toBe(0);
+    expect(new Date(end).getHours()).toBe(23);
+    expect(end - start).toBe(86_399_999);
+  });
+
+  test("full timestamps are exact and invalid input is undefined", () => {
+    expect(parseDateBound("2026-11-01T12:00:00Z", "start")).toBe(Date.parse("2026-11-01T12:00:00Z"));
+    expect(parseDateBound("2026-11-01T12:00:00Z", "end")).toBe(Date.parse("2026-11-01T12:00:00Z"));
+    expect(parseDateBound("not a date", "start")).toBeUndefined();
+    expect(parseDateBound("   ", "start")).toBeUndefined();
   });
 });
 

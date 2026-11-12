@@ -12,7 +12,7 @@ import { backfillProject, indexSummaryFiles } from "../indexer.js";
 import { embedDisabled } from "../paths.js";
 import type { Runtime } from "../runtime.js";
 import type { MessageKind, SearchHit } from "../types.js";
-import { snippet, tokenize } from "../util.js";
+import { fmtDate, normalizeWhitespace, snippet, tokenize } from "../util.js";
 
 export interface SearchMemoryOptions {
   projectID?: string | undefined;
@@ -21,6 +21,9 @@ export interface SearchMemoryOptions {
   kind?: MessageKind | "any" | undefined;
   /** Restrict to several kinds (the GUI uses user + assistant). */
   kinds?: MessageKind[] | undefined;
+  /** Inclusive lower/upper bounds on the document's created time (epoch ms). */
+  since?: number | undefined;
+  until?: number | undefined;
   /** Page size (the GUI uses 20; the tool caps at 50). */
   limit: number;
   /** Number of ranked hits to skip. */
@@ -66,6 +69,8 @@ export async function searchMemory(runtime: Runtime, options: SearchMemoryOption
     scope: options.scope,
     kind,
     kinds: options.kinds,
+    since: options.since,
+    until: options.until,
     limit: window * 3,
   });
 
@@ -84,6 +89,8 @@ export async function searchMemory(runtime: Runtime, options: SearchMemoryOption
         );
         for (const [id, entry] of vectors) {
           if (kindSet ? !kindSet.has(entry.kind) : kind !== "any" && entry.kind !== kind) continue;
+          if (options.since !== undefined && entry.created < options.since) continue;
+          if (options.until !== undefined && entry.created > options.until) continue;
           let best = -Infinity;
           for (const vec of entry.vecs) {
             const score = cosine(qvec, vec);
@@ -133,4 +140,27 @@ export async function searchMemory(runtime: Runtime, options: SearchMemoryOption
     partial,
     ...(vectorNote ? { vectorNote } : {}),
   };
+}
+
+/**
+ * One line per hit, with the id that `memory.history action="message"` needs.
+ * Every narrative doc stores its message id in `messageID`; summary docs carry
+ * `messageID` without the `summary:` index prefix, so quoting stays a lookup
+ * instead of a search.
+ */
+export function formatSearchHits(hits: SearchHit[], sessionID?: string): string[] {
+  return hits.map((hit) => {
+    const session = sessionID && hit.sessionID === sessionID ? "this session" : `\`${hit.sessionID}\``;
+    const by =
+      hit.kind === "user"
+        ? "user"
+        : [hit.agent, hit.model ? `(${hit.model})` : ""].filter(Boolean).join(" ");
+    const messageID = hit.messageID ?? hit.id;
+    return (
+      `- **${fmtDate(hit.created)}** · ${hit.kind}` +
+      `${by ? ` · by: ${by}` : ""} · via: ${hit.via ?? "fts"} · ${session} · \`${messageID}\`` +
+      `${hit.title ? ` — ${hit.title}` : ""}` +
+      `\n  ${normalizeWhitespace(hit.snippet)}`
+    );
+  });
 }

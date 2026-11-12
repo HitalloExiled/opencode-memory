@@ -241,10 +241,17 @@ export async function listAllSummaries(limit = 50): Promise<SummaryRecord[]> {
   return records.slice(0, Math.max(1, limit));
 }
 
-export async function findSummary(projectID: string, id = "latest"): Promise<SummaryRecord | undefined> {
+/**
+ * Resolve one summary by id, message id, file name or a >=8 char message-id
+ * prefix. `projectID` undefined searches every project bucket (the caller's
+ * scope="all"); "latest" then means the newest summary on the machine.
+ */
+export async function findSummary(projectID: string | undefined, id = "latest"): Promise<SummaryRecord | undefined> {
   const wanted = id.trim().replace(/^summary:/, "");
-  if (!wanted || wanted === "latest") return (await listSummaries(projectID, 1))[0];
-  const records = await listSummaries(projectID, 1000);
+  if (!wanted || wanted === "latest") {
+    return projectID ? (await listSummaries(projectID, 1))[0] : (await listAllSummaries(1))[0];
+  }
+  const records = projectID ? await listSummaries(projectID, 1000) : await listAllSummaries(1000);
   // Exact matches (id, message id, file name) always win.
   const exact = records.find(
     (record) =>

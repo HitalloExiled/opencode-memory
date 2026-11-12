@@ -69,6 +69,21 @@ describe("SqliteIndex", () => {
     await index.close();
   });
 
+  test("since/until filter by created time (inclusive bounds)", async () => {
+    const index = await openIndex();
+    await index.upsert(docs);
+    const window = async (since?: number, until?: number) =>
+      ids(await index.search("text", { scope: "all", kind: "any", since, until, limit: 10 }));
+    // Most recent first: m3 (3000) then m1 (1000); m2 has no "text".
+    expect(await window()).toEqual(["m3", "m1"]);
+    expect(await window(1000)).toEqual(["m3", "m1"]);
+    expect(await window(1500)).toEqual(["m3"]);
+    expect(await window(undefined, 1500)).toEqual(["m1"]);
+    expect(await window(3000, 3000)).toEqual(["m3"]);
+    expect(await window(1500, 2500)).toEqual([]);
+    await index.close();
+  });
+
   test("filters a conversation to user + assistant kinds", async () => {
     const index = await openIndex();
     await index.clearAll();

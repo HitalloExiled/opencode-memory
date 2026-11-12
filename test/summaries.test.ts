@@ -121,6 +121,18 @@ describe("findSummary", () => {
     expect(await findSummary("pA", "msg_c")).toBeUndefined();
     expect(await findSummary("pA", "nope")).toBeUndefined();
   });
+
+  test("resolves across project buckets when projectID is undefined", async () => {
+    await captureCompaction("pB", session, compaction("msg_other", 1760000200000, BODY));
+    // scope="all": exact id, prefixed id, long prefix and latest are global.
+    expect((await findSummary(undefined, "msg_other"))?.projectID).toBe("pB");
+    expect((await findSummary(undefined, "summary:msg_other"))?.id).toBe("msg_other");
+    expect((await findSummary(undefined, "msg_othe"))?.id).toBe("msg_other");
+    expect((await findSummary(undefined, "latest"))?.id).toBe("msg_other");
+    // scope="project" keeps the old, local behavior.
+    expect((await findSummary("pA", "latest"))?.id).toBe("msg_rehome");
+    expect(await findSummary("pA", "msg_other")).toBeUndefined();
+  });
 });
 
 describe("searchSummaries", () => {

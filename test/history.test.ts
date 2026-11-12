@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { extractNarrative, extractSearchText, formatMessage, formatTimeline } from "../history.js";
+import type { PluginContext } from "../context.js";
+import { extractNarrative, extractSearchText, formatMessage, formatTimeline, searchSession } from "../history.js";
 import type { MessageLike } from "../types.js";
 
 const userMsg: MessageLike = { type: "user", id: "u1", text: "hello world", time: { created: 1000 } };
@@ -79,5 +80,46 @@ describe("formatTimeline", () => {
     const big: MessageLike = { type: "user", id: "big", text: "z".repeat(50_000), time: { created: 1 } };
     const out = formatTimeline([big], { maxTotal: 1000 });
     expect(out).toContain("timeline truncated");
+  });
+});
+
+describe("searchSession", () => {
+  // Real timestamps are epoch ms: 01:00, 02:00 and 03:00 on the same day.
+  const base = 1_700_000_000_000;
+  const messages: MessageLike[] = [0, 3_600_000, 7_200_000].map((offset, index) => ({
+    type: "user",
+    id: `m${index}`,
+    text: `window ${index}`,
+    time: { created: base + offset },
+  }));
+  const ctx = {
+    session: {
+      message: {
+        list: async () => ({ data: messages, cursor: null }),
+        get: async () => messages[0],
+      },
+    },
+  } as unknown as PluginContext;
+
+  test("since/until keep only messages created inside the window", async () => {
+    const all = await searchSession(ctx, "s1", "window", { limit: 10 });
+    expect(all.hits.map((hit) => hit.message.id)).toEqual(["m0", "m1", "m2"]);
+
+    const narrowed = await searchSession(ctx, "s1", "window", {
+      limit: 10,
+      since: base + 1_800_000,
+      until: base + 5_400_000,
+    });
+    expect(narrowed.hits.map((hit) => hit.message.id)).toEqual(["m1"]);
+
+    const fromOnly = await searchSession(ctx, "s1", "window", { limit: 10, since: base + 3_600_000 });
+    expect(fromOnly.hits.map((hit) => hit.message.id)).toEqual(["m1", "m2"]);
+
+    const empty = await searchSession(ctx, "s1", "window", {
+      limit: 10,
+      since: base + 2_000_000,
+      until: base + 3_000_000,
+    });
+    expect(empty.hits).toEqual([]);
   });
 });

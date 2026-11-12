@@ -20,6 +20,29 @@ export function timeMs(value: unknown): number {
   return 0;
 }
 
+/**
+ * Date bound for tool inputs. A bare `YYYY-MM-DD` covers that whole day in the
+ * caller's local timezone (start 00:00, end 23:59:59.999); anything else goes
+ * through `Date.parse` so full ISO timestamps are exact. Undefined means the
+ * input could not be read as a date.
+ */
+export function parseDateBound(value: string, edge: "start" | "end"): number | undefined {
+  const text = value.trim();
+  if (!text) return undefined;
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (dateOnly) {
+    const [, year, month, day] = dateOnly;
+    const date =
+      edge === "start"
+        ? new Date(Number(year), Number(month) - 1, Number(day))
+        : new Date(Number(year), Number(month) - 1, Number(day), 23, 59, 59, 999);
+    const ms = date.getTime();
+    return Number.isFinite(ms) ? ms : undefined;
+  }
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 export function fmtDate(ms: number): string {
   if (!ms) return "unknown";
   const date = new Date(ms);

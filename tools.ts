@@ -7,7 +7,7 @@ import { embedDocs, getEngine } from "./embed.js";
 import { embedDisabled, embedModelName } from "./paths.js";
 import { indexAllProjects, reindexProject } from "./indexer.js";
 import { currentProject } from "./src/scope.js";
-import { searchMemory } from "./src/search.js";
+import { formatSearchHits, searchMemory } from "./src/search.js";
 import { repoSnapshot } from "./repo.js";
 import {
   findSummary,
@@ -32,7 +32,7 @@ import {
   searchSession,
 } from "./history.js";
 import type { HistoryPage, HistorySearchHit, HistorySource } from "./history.js";
-import { fmtDate, normalizeWhitespace } from "./util.js";
+import { fmtDate, parseDateBound } from "./util.js";
 
 function str(input: Record<string, unknown>, key: string): string | undefined {
   const value = input[key];
@@ -58,6 +58,20 @@ function strings(input: Record<string, unknown>, key: string): string[] {
 
 function record(input: unknown): Record<string, unknown> {
   return typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
+}
+
+/** Shared `since`/`until` parsing for the search tools. */
+function dateRange(input: Record<string, unknown>): { since?: number; until?: number; error?: string } {
+  const sinceText = str(input, "since");
+  const untilText = str(input, "until");
+  const since = sinceText ? parseDateBound(sinceText, "start") : undefined;
+  const until = untilText ? parseDateBound(untilText, "end") : undefined;
+  if (sinceText && since === undefined) return { error: `Invalid since "${sinceText}": use YYYY-MM-DD or an ISO timestamp.` };
+  if (untilText && until === undefined) return { error: `Invalid until "${untilText}": use YYYY-MM-DD or an ISO timestamp.` };
+  if (since !== undefined && until !== undefined && since > until) {
+    return { error: "Empty range: since is after until." };
+  }
+  return { since, until };
 }
 
 export async function registerTools(ctx: PluginContext, runtime: Runtime) {
@@ -104,6 +118,14 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
             type: "string",
             enum: ["any", "summary", "user", "assistant"],
             description: "Filter by document kind. Defaults to any.",
+          },
+          since: {
+            type: "string",
+            description: "Only hits created at or after this date: YYYY-MM-DD (whole local day) or an ISO timestamp.",
+          },
+          until: {
+            type: "string",
+            description: "Only hits created at or before this date: YYYY-MM-DD (whole local day) or an ISO timestamp.",
           },
           limit: { type: "number", description: "Maximum hits (1-50, default 20)." },
           rebuild: {
@@ -196,12 +218,16 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
         const scope = str(input, "scope") === "all" ? "all" : "project";
         const kind = (str(input, "kind") ?? "any") as MessageKind | "any";
         const limit = num(input, "limit", 20, 1, 50);
+        const range = dateRange(input);
+        if (range.error) return { content: range.error };
 
         const result = await searchMemory(runtime, {
           projectID,
           scope,
           query,
           kind,
+          since: range.since,
+          until: range.until,
           limit,
           offset: 0,
         });
@@ -219,22 +245,7 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
           };
         }
 
-        const lines = hits.map((hit) => {
-          const session = hit.sessionID === context.sessionID ? "this session" : `\`${hit.sessionID}\``;
-          // Attribution: who produced the content (agent + model for
-          // assistant/summary; user text is the human, implicit in kind).
-          const by =
-            hit.kind === "user"
-              ? "user"
-              : [hit.agent, hit.model ? `(${hit.model})` : ""].filter(Boolean).join(" ");
-          return (
-            `- **${fmtDate(hit.created)}** · ${hit.kind}` +
-            `${by ? ` · by: ${by}` : ""} · via: ${hit.via ?? "fts"} · ${session}` +
-            `${hit.title ? ` — ${hit.title}` : ""}` +
-            `${hit.kind === "summary" && hit.messageID ? ` · summary \`${hit.messageID}\`` : ""}` +
-            `\n  ${normalizeWhitespace(hit.snippet)}`
-          );
-        });
+        const lines = formatSearchHits(hits, context.sessionID);
         return {
           content:
             `${hits.length} match(es) for "${query}" (scope: ${scope}).\n\n${lines.join("\n")}` +
@@ -295,12 +306,12 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
 
         if (action === "read") {
           const id = str(input, "id") ?? "latest";
-          const record_ = await findSummary(projectID, id);
+          const record_ = await findSummary(scope === "all" ? undefined : projectID, id);
           if (!record_) {
-            const available = await listSummaries(projectID, 10);
+            const available = scope === "all" ? await listAllSummaries(10) : await listSummaries(projectID, 10);
             return {
               content:
-                `No summary matching "${id}" in this project.` +
+                `No summary matching "${id}" ${scope === "all" ? "across projects" : "in this project"}.` +
                 (available.length ? `\n\nAvailable:\n${formatSummaryList(available)}` : ""),
             };
           }
@@ -375,6 +386,14 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
             description:
               "Scope for sessions (listing) and for read/search/message/content (target session). Defaults to project. " +
               "Pass scope=all to read or search sessions that belong to another project.",
+          },
+          since: {
+            type: "string",
+            description: "action=search: only messages created at or after this date (YYYY-MM-DD local day, or ISO timestamp).",
+          },
+          until: {
+            type: "string",
+            description: "action=search: only messages created at or before this date (YYYY-MM-DD local day, or ISO timestamp).",
           },
         },
         additionalProperties: false,
@@ -455,6 +474,8 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
         if (action === "search") {
           const query = str(input, "query");
           if (!query) return { content: "Provide `query` for action=search." };
+          const range = dateRange(input);
+          if (range.error) return { content: range.error };
           let result: { hits: HistorySearchHit[]; partial: boolean; source: HistorySource };
           try {
             result = await searchSession(ctx, sessionID, query, {
@@ -463,6 +484,8 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
               limit: num(input, "limit", 20, 1, 100),
               context: num(input, "context", 260, 80, 4000),
               windows: num(input, "windows", 3, 1, 10),
+              since: range.since,
+              until: range.until,
             });
           } catch (error) {
             const detail = error instanceof Error && error.message ? error.message : "session not found";

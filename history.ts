@@ -571,6 +571,9 @@ export interface SearchSessionOptions extends ExtractOptions {
   context?: number;
   /** Max windows per message, one per occurrence cluster. */
   windows?: number;
+  /** Inclusive bounds on the message created time (epoch ms). */
+  since?: number;
+  until?: number;
 }
 
 /**
@@ -591,6 +594,11 @@ export async function searchSession(
   const listed = await listAllMessages(ctx, sessionID, { max: options.maxMessages ?? 4000 });
   const hits: HistorySearchHit[] = [];
   for (const message of listed.messages) {
+    if (options.since !== undefined || options.until !== undefined) {
+      const created = messageCreated(message);
+      if (options.since !== undefined && created < options.since) continue;
+      if (options.until !== undefined && created > options.until) continue;
+    }
     const text = extractSearchText(message, options);
     if (!text) continue;
     const haystack = text.toLocaleLowerCase();

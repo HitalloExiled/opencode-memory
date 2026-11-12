@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import type { Runtime } from "../runtime.js";
-import { searchMemory } from "../src/search.js";
+import { formatSearchHits, searchMemory } from "../src/search.js";
 import type { SearchHit } from "../types.js";
 
 const docs: SearchHit[] = [1, 2, 3, 4].map((n) => ({
@@ -86,5 +86,60 @@ describe("searchMemory pagination", () => {
     });
     expect(result.hits).toHaveLength(4);
     expect(result.hasMore).toBe(false);
+  });
+});
+
+describe("formatSearchHits", () => {
+  const base: SearchHit = docs[0]!;
+  const hit = (over: Partial<SearchHit>): SearchHit => ({ ...base, ...over });
+
+  test("prints the message id so action=message is one lookup away", () => {
+    const [line] = formatSearchHits([hit({ sessionID: "s1", title: "A title" })], "s1");
+    expect(line).toContain("this session");
+    expect(line).toContain("`m1`");
+    expect(line).toContain("A title");
+  });
+
+  test("summary hits show the message id without the index prefix", () => {
+    const [line] = formatSearchHits(
+      [hit({ sessionID: "s9", id: "summary:msg_x", messageID: "msg_x", kind: "summary" })],
+      "s1",
+    );
+    expect(line).toContain("`s9`");
+    expect(line).toContain("`msg_x`");
+    expect(line).not.toContain("`summary:msg_x`");
+  });
+
+  test("falls back to the document id when messageID is absent", () => {
+    const [line] = formatSearchHits([hit({ id: "doc1", messageID: undefined })], "s1");
+    expect(line).toContain("`doc1`");
+  });
+});
+
+describe("searchMemory date window", () => {
+  test("forwards since/until to the index", async () => {
+    const seen: Array<{ since?: number; until?: number }> = [];
+    const runtime = {
+      index: {
+        backend: "sqlite-fts5",
+        search: async (_query: string, options: { limit: number; since?: number; until?: number }) => {
+          seen.push({ since: options.since, until: options.until });
+          return docs.slice(0, options.limit);
+        },
+        loadVectors: async () => new Map(),
+        docsByIds: async () => [],
+      },
+    } as unknown as Runtime;
+
+    await searchMemory(runtime, {
+      projectID: "p1",
+      scope: "project",
+      query: "document",
+      limit: 2,
+      since: 1500,
+      until: 2500,
+      backfill: false,
+    });
+    expect(seen[0]).toEqual({ since: 1500, until: 2500 });
   });
 });

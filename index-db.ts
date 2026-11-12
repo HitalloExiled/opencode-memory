@@ -17,6 +17,10 @@ export interface SearchOptions {
   kind?: MessageKind | "any";
   /** Restrict to several kinds (e.g. conversation = user + assistant). */
   kinds?: MessageKind[];
+  /** Inclusive lower bound on the document's created time (epoch ms). */
+  since?: number;
+  /** Inclusive upper bound on the document's created time (epoch ms). */
+  until?: number;
   limit: number;
 }
 
@@ -24,6 +28,23 @@ function kindsOf(options: SearchOptions): MessageKind[] | undefined {
   if (options.kinds && options.kinds.length > 0) return options.kinds;
   if (options.kind && options.kind !== "any") return [options.kind];
   return undefined;
+}
+
+function inWindow(created: number, options: Pick<SearchOptions, "since" | "until">): boolean {
+  if (options.since !== undefined && created < options.since) return false;
+  if (options.until !== undefined && created > options.until) return false;
+  return true;
+}
+
+function windowClauses(options: SearchOptions, column: string, clauses: string[], params: unknown[]): void {
+  if (options.since !== undefined) {
+    clauses.push(`${column} >= ?`);
+    params.push(options.since);
+  }
+  if (options.until !== undefined) {
+    clauses.push(`${column} <= ?`);
+    params.push(options.until);
+  }
 }
 
 export interface MemoryIndex {
@@ -51,7 +72,10 @@ export interface MemoryIndex {
    */
   rehomeVectors(docID: string, projectID: string, kind: MessageKind): Promise<void>;
   /** All vectors of a model, grouped by doc (in chunk order). */
-  loadVectors(model: string, projectID?: string): Promise<Map<string, { kind: MessageKind; vecs: Float32Array[] }>>;
+  loadVectors(
+    model: string,
+    projectID?: string,
+  ): Promise<Map<string, { kind: MessageKind; created: number; vecs: Float32Array[] }>>;
   /** Distinct docs carrying vectors of a model. */
   vectorCount(model: string, projectID?: string): Promise<number>;
   deleteVectors(docIDs: string[]): Promise<void>;
@@ -216,6 +240,7 @@ class SqliteIndex implements MemoryIndex {
       clauses.push(`kind IN (${kinds.map(() => "?").join(", ")})`);
       params.push(...kinds);
     }
+    windowClauses(options, "created", clauses, params);
     const sql =
       "SELECT id, project_id, session_id, message_id, kind, created, title, agent, model, text FROM documents" +
       (clauses.length ? ` WHERE ${clauses.join(" AND ")}` : "") +
@@ -242,6 +267,7 @@ class SqliteIndex implements MemoryIndex {
       clauses.push(`d.kind IN (${kinds.map(() => "?").join(", ")})`);
       params.push(...kinds);
     }
+    windowClauses(options, "d.created", clauses, params);
     params.push(Math.max(1, options.limit));
     try {
       const rows = this.db
@@ -380,19 +406,22 @@ class SqliteIndex implements MemoryIndex {
   async loadVectors(
     model: string,
     projectID?: string,
-  ): Promise<Map<string, { kind: MessageKind; vecs: Float32Array[] }>> {
+  ): Promise<Map<string, { kind: MessageKind; created: number; vecs: Float32Array[] }>> {
+    // `created` rides along for date-window filtering before the cosine pass.
+    // LEFT JOIN: a vector without a documents row still loads (created 0), so
+    // the unfiltered path keeps behaving exactly as before.
+    const select =
+      "SELECT e.doc_id, e.kind, e.chunk, e.vec, d.created FROM embeddings e LEFT JOIN documents d ON d.id = e.doc_id";
     const rows = projectID
       ? (this.db
-          .query("SELECT doc_id, kind, chunk, vec FROM embeddings WHERE model = ? AND project_id = ? ORDER BY doc_id, chunk")
+          .query(`${select} WHERE e.model = ? AND e.project_id = ? ORDER BY e.doc_id, e.chunk`)
           .all(model, projectID) as any[])
-      : (this.db
-          .query("SELECT doc_id, kind, chunk, vec FROM embeddings WHERE model = ? ORDER BY doc_id, chunk")
-          .all(model) as any[]);
-    const out = new Map<string, { kind: MessageKind; vecs: Float32Array[] }>();
+      : (this.db.query(`${select} WHERE e.model = ? ORDER BY e.doc_id, e.chunk`).all(model) as any[]);
+    const out = new Map<string, { kind: MessageKind; created: number; vecs: Float32Array[] }>();
     for (const row of rows) {
       let entry = out.get(String(row.doc_id));
       if (!entry) {
-        entry = { kind: String(row.kind) as MessageKind, vecs: [] };
+        entry = { kind: String(row.kind) as MessageKind, created: Number(row.created ?? 0), vecs: [] };
         out.set(String(row.doc_id), entry);
       }
       entry.vecs.push(fromBlob(row.vec));
@@ -515,6 +544,7 @@ export class JsonIndex implements MemoryIndex {
     for (const doc of this.documents.values()) {
       if (options.scope === "project" && doc.projectID !== options.projectID) continue;
       if (kinds && !kinds.includes(doc.kind)) continue;
+      if (!inWindow(doc.created, options)) continue;
       const haystack = `${doc.title ?? ""}\n${doc.text}`.toLocaleLowerCase();
       let score = 0;
       for (const term of terms) {
@@ -568,7 +598,10 @@ export class JsonIndex implements MemoryIndex {
 
   async rehomeVectors(_docID: string, _projectID: string, _kind: MessageKind): Promise<void> {}
 
-  async loadVectors(_model: string, _projectID?: string): Promise<Map<string, { kind: MessageKind; vecs: Float32Array[] }>> {
+  async loadVectors(
+    _model: string,
+    _projectID?: string,
+  ): Promise<Map<string, { kind: MessageKind; created: number; vecs: Float32Array[] }>> {
     return new Map();
   }
 
