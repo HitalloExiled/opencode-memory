@@ -103,7 +103,7 @@ describe("buildQuote", () => {
     expect(text).toContain('ocorrência de "needle"');
     expect(text).toContain("chars 4000–6000 de 9000");
     expect(text).toContain("offset 4000, tamanho 2000; truncado em 2000");
-    expect(text).toContain('memory.history action="content" sessionID="ses_1" messageID="msg_1" offset=4000 limit=2000 scope="all"');
+    expect(text).toContain('memory.history action="message" sessionID="ses_1" messageID="msg_1" charOffset=4000 charLimit=2000');
     expect(text.endsWith("\n\nthe slice")).toBe(true);
   });
 });

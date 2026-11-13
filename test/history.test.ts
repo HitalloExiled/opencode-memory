@@ -122,4 +122,42 @@ describe("searchSession", () => {
     });
     expect(empty.hits).toEqual([]);
   });
+
+  test("role filters the author and offset pages the matches", async () => {
+    const mixed: MessageLike[] = [
+      { type: "user", id: "u1", text: "needle one", time: { created: base } },
+      {
+        type: "assistant",
+        id: "a1",
+        time: { created: base + 1000 },
+        content: [{ type: "text", text: "needle two" }],
+      },
+      { type: "user", id: "u2", text: "needle three", time: { created: base + 2000 } },
+    ];
+    const mixedCtx = {
+      session: {
+        message: {
+          list: async () => ({ data: mixed, cursor: null }),
+          get: async () => mixed[0],
+        },
+      },
+    } as unknown as PluginContext;
+
+    const users = await searchSession(mixedCtx, "s1", "needle", { limit: 10, role: "user" });
+    expect(users.hits).toHaveLength(2);
+    expect(users.hits.every((hit) => hit.message.type === "user")).toBe(true);
+
+    const assistants = await searchSession(mixedCtx, "s1", "needle", { limit: 10, role: "assistant" });
+    expect(assistants.hits.map((hit) => hit.message.id)).toEqual(["a1"]);
+
+    const pages = [];
+    for (const offset of [0, 1, 2, 3]) {
+      pages.push(await searchSession(mixedCtx, "s1", "needle", { limit: 1, offset }));
+    }
+    expect(pages.map((page) => page.hits.length)).toEqual([1, 1, 1, 0]);
+    expect(pages.map((page) => page.hasMore)).toEqual([true, true, false, false]);
+    expect(new Set(pages.flatMap((page) => page.hits.map((hit) => hit.message.id)))).toEqual(
+      new Set(["u1", "a1", "u2"]),
+    );
+  });
 });

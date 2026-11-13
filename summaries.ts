@@ -209,17 +209,34 @@ export async function migrateSessionSummaries(
   return moved;
 }
 
-export async function listSummaries(projectID: string, limit = 20): Promise<SummaryRecord[]> {
+/** Inclusive bounds on `created` (epoch ms) for summary listings. */
+export interface SummaryRange {
+  since?: number;
+  until?: number;
+}
+
+function inRange(created: number, range?: SummaryRange): boolean {
+  if (!range) return true;
+  if (range.since !== undefined && created < range.since) return false;
+  if (range.until !== undefined && created > range.until) return false;
+  return true;
+}
+
+export async function listSummaries(
+  projectID: string,
+  limit = 20,
+  range?: SummaryRange,
+): Promise<SummaryRecord[]> {
   const records: SummaryRecord[] = [];
   for (const path of await listMarkdown(projectDir(projectID))) {
     const record = await summaryFromPath(path, projectID);
-    if (record) records.push(record);
+    if (record && inRange(record.created, range)) records.push(record);
   }
   records.sort((a, b) => b.created - a.created || b.messageID.localeCompare(a.messageID));
   return records.slice(0, Math.max(1, limit));
 }
 
-export async function listAllSummaries(limit = 50): Promise<SummaryRecord[]> {
+export async function listAllSummaries(limit = 50, range?: SummaryRange): Promise<SummaryRecord[]> {
   const records: SummaryRecord[] = [];
   let dirs: string[];
   try {
@@ -234,7 +251,7 @@ export async function listAllSummaries(limit = 50): Promise<SummaryRecord[]> {
     const projectID = basename(dir);
     for (const path of await listMarkdown(dir)) {
       const record = await summaryFromPath(path, projectID);
-      if (record) records.push(record);
+      if (record && inRange(record.created, range)) records.push(record);
     }
   }
   records.sort((a, b) => b.created - a.created);
@@ -270,10 +287,11 @@ export async function searchSummaries(
   projectID: string | undefined,
   query: string,
   limit = 20,
+  range?: SummaryRange,
 ): Promise<Array<{ record: SummaryRecord; snippet: string; score: number }>> {
   const terms = tokenize(query);
   if (terms.length === 0) return [];
-  const records = projectID ? await listSummaries(projectID, 1000) : await listAllSummaries(1000);
+  const records = projectID ? await listSummaries(projectID, 1000, range) : await listAllSummaries(1000, range);
   const out: Array<{ record: SummaryRecord; snippet: string; score: number }> = [];
   for (const record of records) {
     const haystack = `${record.title}\n${record.body}`.toLocaleLowerCase();

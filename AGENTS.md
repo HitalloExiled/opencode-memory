@@ -8,10 +8,11 @@ Read `README.md` for product docs (PT-BR).
 `opencode-memory` is a self-contained OpenCode (V2) plugin:
 
 - **Capture** — saves every compaction summary as Markdown under the data dir.
-- **Injection** — adds a `<memory-context>` block plus the memory-routing rule
-  to the first request of a session (never persisted).
+- **Injection** — adds the memory-routing rule as its own system part on every
+  agent-loop request (never persisted, no context block).
 - **Search** — hybrid FTS5 + local CPU embeddings over user/assistant text and
-  summaries (`memory.search`, `memory.summaries`).
+  summaries (`memory.search`, `memory.summaries`, `memory.history`) plus index
+  maintenance (`memory.index`).
 - **GUI** — a SolidJS side panel (`./gui-experimental`).
 
 Data lives under `~/.local/share/opencode/`; nothing is written inside the

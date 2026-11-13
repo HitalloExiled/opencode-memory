@@ -36,18 +36,15 @@ O plugin é carregado como pacote local em `~/.config/opencode/plugins/memory`.
    Next Move, Relevant Files, Important Context) é salvo como um arquivo
    Markdown, um por compactação. Nenhuma transcript é guardada — só o resumo
    que o próprio OpenCode já produziu.
-2. **Injeta contexto no início da sessão.** No primeiro turno de uma sessão
-   (e de novo se o projeto mudar), o plugin injeta um bloco
-   `<memory-context>` com o estado do repositório: repositório, branch e último
-   commit (o status do working tree fica **fora** do bloco, para não invalidar
-   o cache de prefixo do servidor a cada edição — peça o estado atual sob
-   demanda pela ferramenta `memory.summaries` com `action=repo`). A compactação
-   da sessão atual já está no contexto ativo e **não** é reinjetada; o resumo de
-   outra sessão também não é injetado — fica a um `memory.summaries` de
-   distância. Junto ao bloco, o plugin injeta também uma regra de *memory
-   routing* — orientativa e **aditiva** (nunca substitui as instruções
-   originais): consulte a memória antes de redescobrir algo que uma sessão
-   anterior já achou. Isso nunca é persistido — é recalculado a cada injeção.
+2. **Injeta a regra de roteamento.** A cada request do agent loop, o plugin
+   anexa um system part próprio com a *memory routing rule* — orientativa e
+   **aditiva** (nunca substitui as instruções originais): consulte a memória
+   antes de redescobrir algo que uma sessão anterior já achou. O texto é
+   constante, então o início do prompt fica byte-idêntico e o cache de prefixo
+   do servidor sobrevive. Nenhum bloco de contexto é injetado: estado do
+   repositório não é memória, e o resumo da própria sessão já está no contexto
+   ativo — o de outra sessão fica a um `memory.summaries` de distância. Nada é
+   persistido.
    **Notas são outra camada:** o plugin `notes` injeta o próprio bloco
    `<notes-context>` e a própria regra; este plugin nunca lê `notes.db`.
 3. **Permite busca cross-sessão.** Um índice derivado (SQLite FTS5, com
@@ -60,14 +57,14 @@ O plugin é carregado como pacote local em `~/.config/opencode/plugins/memory`.
    só acontece quando alguém busca, e só processa sessões/mensagens novas
    desde a última vez. `scope=all` busca o que já está indexado + todos os
    resumos em disco; para indexar todos os projetos manualmente, use
-   `action=index-all` (ou `/index-all`).
+   `memory.index action="index-all"` (ou `/index-all`).
 4. **Oferece um painel lateral (GUI).** A aba **Memória** busca conversas
    passadas, agrupa os resultados por sessão e abre a conversa completa com
    scroll infinito. Um toggle restringe a busca ao projeto da sessão atual;
    desligado, busca em todos os projetos. Cada mensagem tem **Adicionar ao
    contexto**, que anexa ao próximo prompt um trecho truncado (padrão 2000
    caracteres) com o tamanho total e o offset do trecho, para o agente ler o
-   entorno via `memory.history action="content"`.
+   entorno via `memory.history action="message"` com `charOffset`/`charLimit`.
 
    Resumos acompanham a sessão: quando uma sessão muda de projeto, os resumos
    dela são movidos do bucket antigo para o novo (consolidação lazy, no
@@ -112,18 +109,22 @@ indicando a camada que o achou: `fts` (só palavras-chave), `vec`
 - **Lazy e incremental.** Os vetores são gerados em segundo plano após cada
   upsert (nunca bloqueiam a busca por palavras). Documentos inalterados (mesmo
   hash de conteúdo + mesmo modelo) são pulados. Trocar de modelo invalida os
-  vetores antigos: rode `action=embed` de novo e os obsoletos são podados.
+  vetores antigos: rode `memory.index action="embed"` de novo e os obsoletos são
+  podados.
 - **Degradação graciosa.** Se o engine não iniciar (addon nativo ausente,
   pesos incompletos, `MEMORY_EMBED_DISABLED=1`), a busca volta a ser só por
   palavras-chave e o resultado informa isso.
 
-## Tools (read-only, com escopo de projeto por padrão)
+## Tools (escopo de projeto por padrão)
+
+As três primeiras são **read-only**; `memory.index` só mexe no índice derivado.
 
 | Tool | Para quê |
 |---|---|
-| `memory.summaries` | listar/buscar/ler resumos de compactação (`detail=brief\|full\|sections`) + estado do repo (`action=repo`) |
-| `memory.search` | busca híbrida (FTS5 + semântica local, fundida por RRF; cada hit tagueado `via: fts\|vec\|fts+vec` **e com atribuição** `by: <agente> (<modelo>)` / `by: user`) no índice derivado (resumos + texto de usuário/assistente); `scope=project\|all`; `action=index-all` indexa todos os projetos manualmente (`rebuild=true` para rebuild completo); `action=embed` (re)constrói os vetores do escopo |
-| `memory.history` | inspecionar a timeline completa de uma sessão (listar sessões, ler página, buscar, buscar uma mensagem, ler um trecho com `action=content` e `offset`/`limit`; mensagens de assistente mostram `agent:` e `model:`); tool calls e reasoning só entram com `includeTools`/`includeReasoning` explícitos; sessões de outro projeto exigem `scope=all` |
+| `memory.search` | busca híbrida cross-sessão (FTS5 + semântica local, fundida por RRF; cada hit tagueado `via: fts\|vec\|fts+vec` **e com atribuição** `by: <agente> (<modelo>)` / `by: user`) no índice derivado (resumos + texto de usuário/assistente); `scope=project\|all`; `offset` pagina os hits; `since`/`until` recortam por data |
+| `memory.summaries` | listar/buscar/ler resumos de compactação (`detail=brief\|full\|sections`), com `since`/`until` em `list` e `search` |
+| `memory.history` | timeline de uma sessão: `sessions`, `read` (cursor), `search` (`role`, `window`, `offset`), `message` (a mensagem inteira ou uma janela `charOffset`/`charLimit`); mensagens de assistente mostram `agent:` e `model:`; tool calls e reasoning só entram com `include=[...]` |
+| `memory.index` | manutenção do índice: `stats`, `reindex`, `index-all` (`rebuild`), `embed` (`scope`) e `doctor` (`scope`) — o checkup lista cada achado com a ação que conserta e o que ele **não** checa |
 
 ## GUI (painel Memória)
 
@@ -148,10 +149,10 @@ RPC — ela não abre o `index.db` nem o banco do OpenCode. O fluxo:
   continuar a leitura:
 
   ```
-  memory.history action="content" sessionID="..." messageID="..." offset=... limit=... scope="all"
+  memory.history action="message" sessionID="..." messageID="..." charOffset=... charLimit=...
   ```
 
-  `action=content` devolve a janela pedida, o total e os offsets
+  `action="message"` devolve a janela pedida, o total e os offsets
   `previous`/`next`, então o agente consegue navegar em torno da ocorrência sem
   despejar a mensagem inteira no contexto.
 
@@ -165,9 +166,9 @@ npm run gui:build      # dist/gui-experimental.cjs
 ## Comandos
 
 `/summaries`, `/summary [id] [brief|full|sections]`, `/sessions`, `/index`
-(força reindex do projeto), `/index-all` (indexa todos os projetos;
-`/index-all rebuild` para rebuild completo), `/repo` (mostra só o estado do
-git) e `/recall <algo>` (busca forçada no índice de conversas; cada hit com
+(mostra o stats do índice; `/index rebuild` força o reindex do projeto),
+`/index-all` (indexa todos os projetos; `/index-all rebuild` para rebuild
+completo) e `/recall <algo>` (busca forçada no índice de conversas; cada hit com
 sua fonte — sessão + timestamp). Cada um é um atalho que chama as tools acima.
 Comandos de notas (`/pin`, `/unpin`) pertencem ao plugin `notes`.
 
@@ -177,7 +178,6 @@ Comandos de notas (`/pin`, `/unpin`) pertencem ao plugin `notes`.
 |---|---|---|
 | `MEMORY_DATA_DIR` | raiz de dados do plugin (sobrepõe XDG) | `$XDG_DATA_HOME/opencode/memory` |
 | `MEMORY_SUMMARY_KEEP` | quantos resumos manter por projeto (os mais antigos são podados, do disco e do índice, quando um novo resumo é capturado — nunca na path de leitura) | `20` |
-| `MEMORY_INJECT_MAX` | teto de bytes do bloco `<memory-context>` injetado | `~6 KB` |
 | `MEMORY_INDEX_TEXT_MAX` | teto de caracteres de texto indexado por documento | — |
 | `MEMORY_BACKFILL_SESSIONS` | teto de sessões processadas por backfill | — |
 | `MEMORY_BACKFILL_MESSAGES` | teto de mensagens processadas por sessão no backfill | — |

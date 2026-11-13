@@ -3,21 +3,8 @@
 import type { PluginContext } from "./context.js";
 import type { MemoryIndex } from "./index-db.js";
 
-/** Rendered system parts, cached so every request carries identical bytes. */
-export interface SessionInjection {
-  block: string;
-  rule: string;
-}
-
 export interface SessionRuntime {
   projectID?: string;
-  /**
-   * Rendered once per session (and re-rendered on a project change or a new
-   * compaction). Reusing it keeps the head of the prompt byte-stable: the
-   * server rebuilds `system` per request, so anything that changes there
-   * invalidates the provider's prefix cache from that point on.
-   */
-  injection?: SessionInjection;
   captured: boolean;
   lastCompactionID?: string;
 }

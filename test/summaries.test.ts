@@ -142,6 +142,20 @@ describe("searchSummaries", () => {
     expect(hits.some((hit) => hit.record.id === "msg_cap1")).toBe(true);
     expect(await searchSummaries("pA", "zzznottherezzz", 10)).toEqual([]);
   });
+
+  test("since/until narrow both listings and searches", async () => {
+    const all = await listSummaries("pA", 10);
+    expect(all.map((record) => record.id)).toEqual(["msg_rehome", "msg_cap1"]);
+
+    const older = await listSummaries("pA", 10, { until: 1760000000500 });
+    expect(older.map((record) => record.id)).toEqual(["msg_cap1"]);
+
+    const newer = await listSummaries("pA", 10, { since: 1760000000500 });
+    expect(newer.map((record) => record.id)).toEqual(["msg_rehome"]);
+
+    const hits = await searchSummaries("pA", "objective thing", 10, { until: 1760000000500 });
+    expect(hits.map((hit) => hit.record.id)).toEqual(["msg_cap1"]);
+  });
 });
 
 describe("sections and objective helpers", () => {

@@ -54,8 +54,8 @@ const COMMANDS: Definition[] = [
     prompt: (args) => {
       const wantsRebuild = /\b(rebuild|reindex|--rebuild)\b/i.test(args);
       return wantsRebuild
-        ? 'Call memory.search with action="reindex" and report the result.'
-        : 'Call memory.search with action="stats" and report the result. Mention that "/index rebuild" forces a reindex and "/index-all" indexes every project.';
+        ? 'Call memory.index with action="reindex" and report the result.'
+        : 'Call memory.index with action="stats" and report the result. Mention that "/index rebuild" forces a reindex and "/index-all" indexes every project.';
     },
   },
   {
@@ -64,15 +64,10 @@ const COMMANDS: Definition[] = [
     prompt: (args) => {
       const wantsRebuild = /\b(rebuild|full|--rebuild)\b/i.test(args);
       return [
-        `Call memory.search with action="index-all"${wantsRebuild ? " and rebuild=true" : ""} and report the per-project result.`,
+        `Call memory.index with action="index-all"${wantsRebuild ? " and rebuild=true" : ""} and report the per-project result.`,
         "Mention that '/index-all rebuild' forces a full rebuild instead of the incremental default.",
       ].join("\n");
     },
-  },
-  {
-    name: "repo",
-    description: "Show the current repository state",
-    prompt: () => 'Call memory.summaries with action="repo" and report the result verbatim.',
   },
   {
     name: "recall",
@@ -83,9 +78,10 @@ const COMMANDS: Definition[] = [
       const q = query.replace(/"/g, '\\"');
       return [
         `Force a memory search for "${q}" — do not answer from context alone; query the conversation memory:`,
-        `1. Conversation index (what was said/done in past sessions): call memory.search with query="${q}", scope="project"; if nothing is found, retry with scope="all".`,
-        '2. If the query is about a specific session or "when did X happen": use memory.history (action="sessions", then action="search" with a cursor into the session).',
-        "Report every hit with its source (session id + timestamp). If nothing is found, say so explicitly — it may predate the index (mention /index-all).",
+        `1. Cross-session index (what was said/done in past sessions): call memory.search with query="${q}", scope="project"; if nothing is found, retry with scope="all".`,
+        "2. Take a hit's sessionID and messageID to memory.history with action=\"message\"; add charOffset/charLimit only to widen a truncated quote.",
+        '3. For a specific session\'s timeline: memory.history with action="read" (it returns a cursor), or action="search" to find the moment inside it.',
+        "Report every hit with its source (session id + timestamp). If nothing is found, say so explicitly — it may predate the index (mention memory.index action=\"index-all\").",
       ].join("\n");
     },
   },

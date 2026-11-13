@@ -51,11 +51,6 @@ export function summaryKeep(): number {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : 20;
 }
 
-export function injectMax(): number {
-  const value = Number(process.env.MEMORY_INJECT_MAX ?? "6000");
-  return Number.isFinite(value) && value > 1000 ? Math.floor(value) : 6000;
-}
-
 export function indexTextMax(): number {
   const value = Number(process.env.MEMORY_INDEX_TEXT_MAX ?? "16000");
   return Number.isFinite(value) && value > 1000 ? Math.floor(value) : 16000;

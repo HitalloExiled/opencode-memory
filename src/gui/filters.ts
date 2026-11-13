@@ -121,7 +121,7 @@ export function buildQuote(input: QuoteInput, t: Translate): string {
   const header = [
     `[${t("quote.tag")}] ${title} · ${t("quote.session")} ${input.sessionID} · ${t("quote.message")} ${input.messageID} · ${input.kind} · ${isoDate(input.created, t)}${occurrence}${selected}`,
     t("quote.range", formatCharsRange(input.start, input.end, input.total, t), input.offset, input.length, input.limit),
-    `${t("quote.around")} memory.history action="content" sessionID="${input.sessionID}" messageID="${input.messageID}" offset=${input.start} limit=${input.limit} scope="all"`,
+    `${t("quote.around")} memory.history action="message" sessionID="${input.sessionID}" messageID="${input.messageID}" charOffset=${input.start} charLimit=${input.limit}`,
   ];
   return `${header.join("\n")}\n\n${input.text}`;
 }

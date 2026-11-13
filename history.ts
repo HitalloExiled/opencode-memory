@@ -567,10 +567,14 @@ export interface HistorySearchHit {
 export interface SearchSessionOptions extends ExtractOptions {
   maxMessages?: number;
   limit?: number;
+  /** Skip N matches (pagination). */
+  offset?: number;
   /** Width in characters of the window around each occurrence cluster. */
   context?: number;
   /** Max windows per message, one per occurrence cluster. */
   windows?: number;
+  /** Only messages of this role (default: all, compaction included). */
+  role?: "all" | "user" | "assistant";
   /** Inclusive bounds on the message created time (epoch ms). */
   since?: number;
   until?: number;
@@ -586,14 +590,16 @@ export async function searchSession(
   sessionID: string,
   query: string,
   options: SearchSessionOptions,
-): Promise<{ hits: HistorySearchHit[]; partial: boolean; source: HistorySource }> {
+): Promise<{ hits: HistorySearchHit[]; hasMore: boolean; partial: boolean; source: HistorySource }> {
   const terms = tokenize(query);
-  if (terms.length === 0) return { hits: [], partial: false, source: "session" };
+  if (terms.length === 0) return { hits: [], hasMore: false, partial: false, source: "session" };
   const context = Math.max(80, Math.min(4000, options.context ?? 260));
   const windows = Math.max(1, Math.min(10, options.windows ?? 3));
+  const role = options.role ?? "all";
   const listed = await listAllMessages(ctx, sessionID, { max: options.maxMessages ?? 4000 });
   const hits: HistorySearchHit[] = [];
   for (const message of listed.messages) {
+    if (role !== "all" && message.type !== role) continue;
     if (options.since !== undefined || options.until !== undefined) {
       const created = messageCreated(message);
       if (options.since !== undefined && created < options.since) continue;
@@ -615,8 +621,11 @@ export async function searchSession(
     if (score > 0) hits.push({ message, score, snippet: snippet(text, terms, context, windows) });
   }
   hits.sort((a, b) => b.score - a.score || messageCreated(a.message) - messageCreated(b.message));
+  const limit = Math.max(1, options.limit ?? 20);
+  const offset = Math.max(0, Math.floor(options.offset ?? 0));
   return {
-    hits: hits.slice(0, Math.max(1, options.limit ?? 20)),
+    hits: hits.slice(offset, offset + limit),
+    hasMore: hits.length > offset + limit,
     partial: listed.partial,
     source: listed.source,
   };
