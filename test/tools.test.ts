@@ -11,7 +11,7 @@ import type { PluginContext } from "../context.js";
 import type { MemoryIndex } from "../index-db.js";
 import type { Runtime } from "../runtime.js";
 import { createRuntime } from "../runtime.js";
-import { registerTools } from "../tools.js";
+import { MEMORY_NAMESPACE, registerTools } from "../tools.js";
 import type { MessageLike } from "../types.js";
 
 interface RegisteredTool {
@@ -115,6 +115,16 @@ describe("tool schema", () => {
   test("is strict about unknown parameters", async () => {
     const { added } = await harness();
     for (const tool of added) expect(tool.input.additionalProperties).toBe(false);
+  });
+
+  test("keeps tool and namespace descriptions within the catalog budget", async () => {
+    // Code Mode truncates a description with an ellipsis around 119 chars.
+    const BUDGET = 110;
+    const { added } = await harness();
+    expect(MEMORY_NAMESPACE.description.length).toBeLessThanOrEqual(BUDGET);
+    for (const tool of added) {
+      expect(tool.description.length, tool.name).toBeLessThanOrEqual(BUDGET);
+    }
   });
 
   test("keeps every parameter description short enough for the catalog", async () => {

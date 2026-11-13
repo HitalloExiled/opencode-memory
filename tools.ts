@@ -80,6 +80,13 @@ function dateRange(input: Record<string, unknown>): { since?: number; until?: nu
   return { since, until };
 }
 
+/** Catalog group label. Code Mode truncates this at ~119 characters. */
+export const MEMORY_NAMESPACE = {
+  name: "memory",
+  description:
+    "Local memory for this machine: search past conversations and summaries, timelines, index upkeep.",
+} as const;
+
 export async function registerTools(ctx: PluginContext, runtime: Runtime) {
   return ctx.tool.transform((editor) => {
     // Namespaced tools (memory.search / memory.summaries / memory.history),
@@ -88,18 +95,11 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
     // editor.namespace() only labels the group (its description shows in the
     // catalog); the per-tool options.namespace is what actually prefixes the
     // qualified name (tools.memory.*) in Code Mode.
-    editor.namespace({
-      name: "memory",
-      description:
-        "Local memory for this machine: hybrid search over past conversations and compaction summaries, summary inspection, full session timelines, and index maintenance.",
-    });
+    editor.namespace(MEMORY_NAMESPACE);
     editor.add({
       name: "search",
-      description: [
-        "Past sessions: what was said, decided or found. Hybrid keyword+semantic, cross-session.",
-        "Hits carry session and messageID — quote with memory.history action=\"message\".",
-        "Index maintenance: memory.index.",
-      ].join(" "),
+      description:
+        "Search past sessions (keyword+semantic). Quote a hit with memory.history action=message.",
       input: {
         type: "object",
         properties: {
@@ -171,12 +171,8 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
 
     editor.add({
       name: "summaries",
-      description: [
-        "Read compaction summaries stored for this project.",
-        "Use to recover where a past session left off (Objective/Next Move).",
-        "Actions: list, search, read (detail brief|full|sections).",
-        "Read-only and scoped to the current project unless scope=all.",
-      ].join(" "),
+      description:
+        "Read compaction summaries; where a past session left off. Actions: list, search, read.",
       input: {
         type: "object",
         properties: {
@@ -242,10 +238,8 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
 
     editor.add({
       name: "history",
-      description: [
-        "One session's timeline: sessions, read (cursor), search (windows), message (char window).",
-        "Read/search/message require sessionID; to scan every session use memory.search.",
-      ].join(" "),
+      description:
+        "One session's timeline: sessions, read, search, message. Needs sessionID except sessions.",
       input: {
         type: "object",
         properties: {
@@ -464,10 +458,8 @@ export async function registerTools(ctx: PluginContext, runtime: Runtime) {
 
     editor.add({
       name: "index",
-      description: [
-        "Maintain the local memory index; reading never needs this.",
-        "Actions: stats, reindex, index-all, embed, doctor.",
-      ].join(" "),
+      description:
+        "Maintain the memory index. Actions: stats, reindex, index-all, embed, doctor.",
       input: {
         type: "object",
         properties: {

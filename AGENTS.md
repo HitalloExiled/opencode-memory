@@ -41,6 +41,10 @@ dist/gui-experimental.cjs  BUILT GUI artifact (gitignored)
   the OpenCode data dir.
 - **Notes are another layer.** This plugin never reads `notes.db`; the notes
   plugin injects its own `<notes-context>`.
+- **Tool descriptions fit the Code Mode catalog budget.** The catalog truncates
+  a description around 119 characters, so keep it ≤110 with the load-bearing
+  sentence first; parameter descriptions stay ≤6 words. `test/tools.test.ts`
+  enforces both.
 
 ## GUI guideline (shared kit)
 
